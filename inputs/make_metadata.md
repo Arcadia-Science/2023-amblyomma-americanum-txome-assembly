@@ -25,4 +25,11 @@ metadata <- left_join(m1, m2, by = c('experiment_accession', 'experiment_title',
 write_tsv(metadata, "inputs/metadata.tsv")
 ```
 
-By hand, fill in missing sample_title values
+By hand, fill in missing sample_title values.
+
+Also created assembly_group by hand.
+I separated samples by:
+* different chemistries (Illumina, PacBio)
+* read type (paired end,  single end)
+* different tissues/cell lines (whole, salivary gland, gut, cell lines)
+* sex (male vs. female) 
