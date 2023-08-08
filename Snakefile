@@ -18,11 +18,11 @@ RUNACCS = metadata_all["run_accession"].unique().tolist()
 ILLLIBNAMES = metadata_illumina["library_name"].unique().tolist()
 
 rule all:
-    input: expand("outputs/raw_combined/{illlibname}.fq.gz", illlibname = ILLLIBNAMES
+    input: expand("outputs/raw_combined/{illlibname}.fq.gz", illlibname = ILLLIBNAMES)
 
 rule download_fastq_files:
     output: "inputs/raw/{runacc}.fq.gz"
-    conda: "envs/sratoolkit.yml"
+    conda: "envs/sratools.yml"
     params: outdir = "inputs/raw/"
     shell:'''
     fasterq-dump --split-spot -Z {wildcards.runacc} | gzip > {output}
@@ -42,7 +42,7 @@ rule combine_by_library_name:
     the output wildcard illlibname will only contain illumina library names.
     """
     input: expand("inputs/raw/{runacc}.fq.gz", runacc = RUNACCS)
-    output: "outputs/raw_combined/{illlibname}.fq.gz"
+    output: expand("outputs/raw_combined/{illlibname}.fq.gz", illlibname = ILLLIBNAMES)
     params: 
         indir = "inputs/raw/",
         outdir = "outputs/raw_combined/"
