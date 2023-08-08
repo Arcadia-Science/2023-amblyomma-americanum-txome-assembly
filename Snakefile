@@ -17,6 +17,9 @@ RUNACCS = metadata_all["run_accession"].unique().tolist()
 # some libraries are split between multiple SRA accessions
 ILLLIBNAMES = metadata_illumina["library_name"].unique().tolist()
 
+rule all:
+    input: expand("outputs/raw_combined/{illlibname}.fq.gz", illlibname = ILLLIBNAMES
+
 rule download_fastq_files:
     output: "inputs/raw/{runacc}.fq.gz"
     conda: "envs/sratoolkit.yml"
