@@ -5,11 +5,8 @@ We also added the columns bioproject, publication_url, publication_doi, publicat
 
 ```
 mamba install pysradb=2.1.0
-
-cut -f6 inputs/metadata.tsv | sort | uniq | head -n 13 | xargs echo
-# outputs: 
-# SRP032795 SRP051699 SRP052078 SRP052091 SRP052106 SRP052108 SRP052114 SRP052123 SRP052145 SRP052154 SRP091404 SRP373454 SRP446981
-pysradb metadata --saveto tmp.tsv --detailed SRP032795 SRP051699 SRP052078 SRP052091 SRP052106 SRP052108 SRP052114 SRP052123 SRP052145 SRP052154 SRP091404 SRP373454 SRP446981
+# the cut command outputs the unique SRP accessions in inputs/metadata.tsv in the format that pysradb expects them in
+pysradb metadata --saveto tmp.tsv --detailed $(cut -f6 inputs/metadata.tsv | sort | uniq | head -n 13 | xargs echo)
 ```
 
 ```
