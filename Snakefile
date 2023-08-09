@@ -37,7 +37,7 @@ rule combine_by_library_name:
     Some of the input sequences have multiple run accessions (SRR*) associated with a single library.
     This rule combines those run accessions into one file by ill_lib_name (illumina library name).
     Since it uses the metadata_illumina file to do this, as well as expanding over the runacc wild card in the input,
-    the output wildcard illlibname will only contain illumina library names.
+    the output wildcard illumina_lib_name will only contain illumina library names.
     """
     input: expand("inputs/raw/{run_accession}.fq.gz", run_accession = RUN_ACCESSIONS)
     output: expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
@@ -68,18 +68,18 @@ rule fastp:
     - trim the polyA tails
     - adapter trim
     """
-    input: "outputs/raw_combined/{illlibname}.fq.gz"
+    input: "outputs/raw_combined/{illumina_lib_name}.fq.gz"
     output:
-        json = "outputs/fastp/{illlibname}.json",
-        html = "outputs/fastp/{illlibname}.html",
-        fq = "outputs/fastp/{illlibname}.fq.gz"
+        json = "outputs/fastp/{illumina_lib_name}.json",
+        html = "outputs/fastp/{illumina_lib_name}.html",
+        fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
     conda: "envs/fastp.yml"
-    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illlibname, "library_layout"]
+    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illlibname} --interleaved_in --detect_adapter_for_pe --stdout | gzip > {output.fq}
+        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --detect_adapter_for_pe --stdout | gzip > {output.fq}
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illlibname} --stdout | gzip > {output.fq}
+        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
     fi
     '''
 
@@ -88,10 +88,10 @@ rule khmer_kmer_trim_and_normalization:
     K-mer trim and diginorm (digital normalization, or just normalization) according to the eelpond protocol/elvers.
     The oyster river protocol also supports removal of erroneous k-mers through similar methods.
     """
-    input: "outputs/fastp/{illlibname}.fq.gz"
-    output: "outputs/khmer/{illlibname}.fq.gz"
+    input: "outputs/fastp/{illumina_lib_name}.fq.gz"
+    output: "outputs/khmer/{illumina_lib_name}.fq.gz"
     conda: "envs/khmer.yml"
-    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illlibname, "library_layout"]
+    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
         trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o - -M 4e9 --diginorm --diginorm-coverage=20 | extract-paired-reads.py --gzip -p {output} # note does not save orphaned pairs
