@@ -2,3 +2,5 @@ sandbox/
 .DS_Store
 *.swp
 .Rhistory
+.snakemake
+outputs/
