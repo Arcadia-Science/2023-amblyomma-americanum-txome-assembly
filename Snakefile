@@ -74,12 +74,13 @@ rule fastp:
         html = "outputs/fastp/{illumina_lib_name}.html",
         fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
     conda: "envs/fastp.yml"
+    threads: 2
     params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
+        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
+        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
     fi
     '''
 
@@ -92,6 +93,6 @@ rule khmer_kmer_trim_and_normalization:
     output: "outputs/khmer/{illumina_lib_name}.fq.gz"
     conda: "envs/khmer.yml"
     shell:'''
-    trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
+    trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
     '''
 # kmer trimming will expect 
