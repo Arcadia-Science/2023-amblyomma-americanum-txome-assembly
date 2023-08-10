@@ -18,7 +18,7 @@ RUN_ACCESSIONS = metadata_all["run_accession"].unique().tolist()
 ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
 
 rule all:
-    input: expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    input: expand("outputs/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
 
 rule download_fastq_files:
     output: "inputs/raw/{run_accession}.fq.gz"
@@ -27,8 +27,6 @@ rule download_fastq_files:
     shell:'''
     fasterq-dump --split-spot -Z {wildcards.run_accession} | gzip > {output}
     ''' 
-
-#    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.run_accession, "library_layout"]
 
 ######################################
 ## Process & assemble illumina files
@@ -39,7 +37,7 @@ rule combine_by_library_name:
     Some of the input sequences have multiple run accessions (SRR*) associated with a single library.
     This rule combines those run accessions into one file by ill_lib_name (illumina library name).
     Since it uses the metadata_illumina file to do this, as well as expanding over the runacc wild card in the input,
-    the output wildcard illlibname will only contain illumina library names.
+    the output wildcard illumina_lib_name will only contain illumina library names.
     """
     input: expand("inputs/raw/{run_accession}.fq.gz", run_accession = RUN_ACCESSIONS)
     output: expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
@@ -63,6 +61,38 @@ rule combine_by_library_name:
                 shell_drop_in = " ".join(library_paths)
             shell("cat {shell_drop_in} > {params.outdir}/{library_name}.fq.gz")
 
+rule fastp:
+    """
+    We set the quality trimming parameters used by the Oyster River Protocol for de novo transcriptomics:
+    - quality trim with a phred score of 2
+    - trim the polyA tails
+    - adapter trim
+    """
+    input: "outputs/raw_combined/{illumina_lib_name}.fq.gz"
+    output:
+        json = "outputs/fastp/{illumina_lib_name}.json",
+        html = "outputs/fastp/{illumina_lib_name}.html",
+        fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
+    conda: "envs/fastp.yml"
+    threads: 2
+    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
+    shell:'''
+    if [ "{params.liblayout}" == "PAIRED" ]; then
+        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
+    elif [ "{params.liblayout}" == "SINGLE" ]; then
+        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
+    fi
+    '''
 
-# with single end & paired end files, 
+rule khmer_kmer_trim_and_normalization:
+    """
+    K-mer trim and diginorm (digital normalization, or just normalization) according to the eelpond protocol/elvers.
+    The oyster river protocol also supports removal of erroneous k-mers through similar methods.
+    """
+    input: "outputs/fastp/{illumina_lib_name}.fq.gz"
+    output: "outputs/khmer/{illumina_lib_name}.fq.gz"
+    conda: "envs/khmer.yml"
+    shell:'''
+    trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
+    '''
 # kmer trimming will expect 
