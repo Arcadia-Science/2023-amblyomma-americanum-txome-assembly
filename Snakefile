@@ -91,12 +91,7 @@ rule khmer_kmer_trim_and_normalization:
     input: "outputs/fastp/{illumina_lib_name}.fq.gz"
     output: "outputs/khmer/{illumina_lib_name}.fq.gz"
     conda: "envs/khmer.yml"
-    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o - -M 4e9 --diginorm --diginorm-coverage=20 | extract-paired-reads.py --gzip -p {output} # note does not save orphaned pairs
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o {output} -M 4e9 --diginorm --diginorm-coverage=20
-    fi
+    trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
     '''
 # kmer trimming will expect 
