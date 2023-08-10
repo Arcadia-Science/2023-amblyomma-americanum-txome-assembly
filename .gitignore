@@ -4,3 +4,4 @@ sandbox/
 .Rhistory
 .snakemake
 outputs/
+inputs/raw
