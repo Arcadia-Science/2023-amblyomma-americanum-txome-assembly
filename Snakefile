@@ -18,7 +18,7 @@ RUN_ACCESSIONS = metadata_all["run_accession"].unique().tolist()
 ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
 
 rule all:
-    input: expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    input: expand("outputs/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
 
 rule download_fastq_files:
     output: "inputs/raw/{run_accession}.fq.gz"
