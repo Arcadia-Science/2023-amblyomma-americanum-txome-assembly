@@ -74,10 +74,10 @@ rule fastp:
         html = "outputs/fastp/{illumina_lib_name}.html",
         fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
     conda: "envs/fastp.yml"
-    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illumina_lib_name, "library_layout"]
+    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --detect_adapter_for_pe --stdout | gzip > {output.fq}
+        fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
     elif [ "{params.liblayout}" == "SINGLE" ]; then
         fastp -i {input} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
     fi
@@ -91,7 +91,7 @@ rule khmer_kmer_trim_and_normalization:
     input: "outputs/fastp/{illumina_lib_name}.fq.gz"
     output: "outputs/khmer/{illumina_lib_name}.fq.gz"
     conda: "envs/khmer.yml"
-    params: liblayout = lambda wildcards: metadata_all.loc[wildcards.illumina_lib_name, "library_layout"]
+    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
         trim-low-abund.py -V -k 20 -Z 18 -C 2 {input} -o - -M 4e9 --diginorm --diginorm-coverage=20 | extract-paired-reads.py --gzip -p {output} # note does not save orphaned pairs
