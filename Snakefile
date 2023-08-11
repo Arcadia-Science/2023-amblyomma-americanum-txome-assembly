@@ -162,7 +162,7 @@ rule trinity_assemble:
     threads: 4
     params: 
         liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
-        outdir = lambda wildards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group 
+        outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group 
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
         Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --output {params.outdir}
