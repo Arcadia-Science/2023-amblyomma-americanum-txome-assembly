@@ -183,7 +183,7 @@ rule rnaspades_assemble:
     threads: 4
     params: 
         liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
-        outdir = lambda wildards: "outputs/assembly/rnaspades_tmp/" + wildcards.assembly_group 
+        outdir = lambda wildcards: "outputs/assembly/rnaspades_tmp/" + wildcards.assembly_group 
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
         rnaspades.py -1 {input.r1} -2 {input.r2} -o {params.outdir} -t {threads}
