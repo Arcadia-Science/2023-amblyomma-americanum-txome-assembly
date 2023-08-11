@@ -22,7 +22,9 @@ ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
 ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
 
 rule all:
-    input: expand("outputs/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    input: 
+        expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
+        expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS)
 
 rule download_fastq_files:
     output: "inputs/raw/{run_accession}.fq.gz"
