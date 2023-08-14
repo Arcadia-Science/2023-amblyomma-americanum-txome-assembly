@@ -2,6 +2,8 @@ import pandas as pd
 
 # read in metadata file
 metadata_all = pd.read_csv("inputs/metadata.tsv", sep = "\t").set_index("run_accession", drop = False)
+# filter out samples that should be excluded (library prep was weird)
+metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 # select columns that we need metadata from for wildcards and other places in the workflow
 metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout", "instrument"]]
 # separate the isoseq data bc it will be treated separately
@@ -27,7 +29,7 @@ rule all:
         expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS)
 
 rule download_fastq_files:
-    output: "inputs/raw/{run_accession}.fq.gz"
+    output: temp("inputs/raw/{run_accession}.fq.gz")
     conda: "envs/sratools.yml"
     params: outdir = "inputs/raw/"
     shell:'''
@@ -112,7 +114,7 @@ rule combine_by_assembly_group:
     input: expand("outputs/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
     output: expand("outputs/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
     params:
-        indir = "outputs/khmer",
+        indir = "outputs/khmer/",
         outdir = "outputs/assembly_group_interleaved_reads"
     run:
         # create a dictionary that has assembly groups as keys and library names as values
@@ -125,7 +127,7 @@ rule combine_by_assembly_group:
         for assembly_group, library_names in assembly_group_dict.items():
             assembly_group_paths = []
             for library_name in library_names:
-                path = params.indir + run_accession + ".fq.gz"
+                path = params.indir + library_name + ".fq.gz"
                 assembly_group_paths.append(path)
             
             shell_drop_in = " ".join(assembly_group_paths)
@@ -169,7 +171,7 @@ rule trinity_assemble:
     elif [ "{params.liblayout}" == "SINGLE" ]; then
         Trinity --single {input.r1} --seqType fq --CPU {threads} --output {params.outdir} 
     fi
-    mv {params.outdir}/Trinity.fasta > {output}
+    mv {params.outdir}/Trinity.fasta {output}
     '''
 
 rule rnaspades_assemble:
@@ -190,6 +192,6 @@ rule rnaspades_assemble:
     elif [ "{params.liblayout}" == "SINGLE" ]; then
         rnaspades.py -s {input.r1} -o {params.outdir} -t {threads}
     fi
-    mv {params.outdir}/hard_filtered_transcripts.fasta > {output.hard}
-    mv {params.outdir}/soft_filtered_transcripts.fasta > {output.soft}
+    mv {params.outdir}/hard_filtered_transcripts.fasta {output.hard}
+    mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
     '''
