@@ -150,7 +150,7 @@ rule split_paired_end_reads:
     if [ "{params.liblayout}" == "PAIRED" ]; then
         repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        cp {input} > {output.r1}
+        cp {input} {output.r1}
         touch {output.r2}
     fi
     '''
