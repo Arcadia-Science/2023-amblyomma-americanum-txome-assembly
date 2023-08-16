@@ -36,9 +36,11 @@ rule download_fastq_files:
     fasterq-dump --split-spot -Z {wildcards.run_accession} | gzip > {output}
     ''' 
 
-######################################
-## Process & assemble illumina files
-######################################
+###################################################################
+## PROCESS AND ASSEMBLE ILLUMINA FILES
+###################################################################
+
+# Quality control (trimming) of reads -----------------------------
 
 rule combine_by_library_name:
     """
@@ -104,6 +106,8 @@ rule khmer_kmer_trim_and_normalization:
     trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
     '''
 
+# Assembly ----------------------------------------------
+
 rule combine_by_assembly_group:
     """
     Assembly is a balancing act for de novo transcriptomics.
@@ -134,7 +138,7 @@ rule combine_by_assembly_group:
             shell("cat {shell_drop_in} > {params.outdir}/{assembly_group}.fq.gz")
 
 
-rule split_paired_end_reads:
+rule split_paired_end_reads_khmer:
     """
     The trinity transcriptome assembler don't take interleaved reads as input.
     This rule separates reads into forward (R1) and reverse (R2) pairs.
@@ -194,4 +198,127 @@ rule rnaspades_assemble:
     fi
     mv {params.outdir}/hard_filtered_transcripts.fasta {output.hard}
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
+    '''
+
+# Assembly deduplication ---------------------------------
+
+rule tmp_combine_txomes:
+    """
+    This will probably be replaced with something else that does preliminary txome cleanup (orthofuser or evidentialgene)
+    But for now, we'll just combine everything into one file
+    (this step would be required as a precursor to evigene any way, but not for orthofuser)
+    """
+    input:
+        "outputs/assembly/trinity/{assembly_group}_trinity.fa",
+        "outputs/assembly/rnaspades/{assembly_group}_rnaspades_soft_filtered_transcripts.fa",
+    output: "outputs/assembly/all_combined.fa"
+    shell:'''
+    cat {input} > {output}
+    '''
+
+rule index_transcriptome:
+    input: "outputs/assembly/all_combined.fa"
+    output: "outputs/salmon_index/info.json"
+    threads: 1
+    params: indexdir = "outputs/salmon_index/"
+    conda: "envs/salmon.yml"
+    shell:'''
+    salmon index -t {input} -i {params.indexdir} -k 31
+    '''
+
+rule split_paired_end_reads_fastp:
+    input: fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
+    output:
+        r1="outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+    conda: "envs/bbmap.yml"
+    params: liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"]
+    shell:'''
+    if [ "{params.liblayout}" == "PAIRED" ]; then
+        repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
+    elif [ "{params.liblayout}" == "SINGLE" ]; then
+        cp {input} {output.r1}
+        touch {output.r2}
+    fi
+    '''
+
+rule salmon_for_grouper:
+    input:
+        index = "outputs/salmon_index/info.json",
+        r1="outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+    output: "outputs/salmon/{illumina_lib_name}_quant/quant.sf"
+    params: 
+        liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
+        indexdir = "outputs/salmon_index/",
+        outdir = lambda wildcards: "outputs/salmon/" + wildcards.illumina_lib_name + "_quant" 
+    conda: "envs/salmon.yml"
+    threads: 2
+    shell:'''
+    if [ "{params.liblayout}" == "PAIRED" ]; then
+        salmon quant -i {params.indexdir} -l A -1 {input.r1} -2 {input.r2} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads} 
+    elif [ "{params.liblayout}" == "SINGLE" ]; then
+        salmon quant -i {params.indexdir} -l A -r {input.r1} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads}
+    fi
+    '''
+
+rule make_grouper_config_file:
+    """
+    Grouper requires a config file in the following format:
+    conditions:
+        - Control
+        - HOXA1 Knockdown
+    samples:
+        Control:
+            - SRR493366_quant
+            - SRR493367_quant
+        HOXA1 Knockdown:
+            - SRR493369_quant
+            - SRR493371_quant
+    outdir: human_grouper
+    orphan: True
+    mincut: True
+    """
+    input: expand("outputs/salmon/{illumina_lib_name}_quant/quant.sf", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    output: conf = "outputs/grouper/grouper_conf.yml"
+    params: 
+        grouperdir = "outputs/grouper/",
+        salmondir =  "outputs/salmon/"
+    run:
+        # create a dictionary of assembly groups: library names
+        tmp = metadata_illumina[["assembly_group", "library_name"]]
+        assembly_group_dict = {}
+        for group, d in tmp.groupby('assembly_group'):
+            assembly_group_dict[group] = d['library_name'].values.tolist()
+        # use the dictionary to parse a string of conditions (assembly groups) that will be written to the grouper yaml
+        conditions_list = "\n    - ".join(list(assembly_group_dict.keys()))
+        # use the dictionary to parse a nested string of conditions: salmon results by library name that will be written to grouper yaml
+        samples_list = []
+        for assembly_group, library_names in assembly_group_dict.items():
+            samples_list.append("\n    - " + assembly_group)
+            for library_name in library_names:
+                samples_list.append("\n        -" + params.salmondir + library_name + "_quant")
+
+        samples_list = "".join(samples_list)
+        # create a config template with format strings that will be substituted in the write process
+        config_template = """\
+conditions:
+    - {conditions_list}
+samples: {samples_list}
+outdir: {outdir}
+orphan: True
+mincut: True
+"""
+        with open(output.conf, 'wt') as fp:
+            fp.write(config_template.format(conditions_list = conditions_list, 
+                                            samples_list = samples_list,
+                                            outdir = params.grouperdir))
+
+
+rule run_grouper:
+    input: "outputs/grouper/grouper_conf.yml"
+    output: "outputs/grouper/mag.flat.clust"
+    conda: "envs/biogrouper.yml"
+    shell:'''
+    Grouper --config {input}
     '''
