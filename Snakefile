@@ -161,17 +161,17 @@ rule trinity_assemble:
         r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
-    threads: 4
+    threads: 7
     params: 
         liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
-        outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group 
+        outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --output {params.outdir}
+        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir}
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        Trinity --single {input.r1} --seqType fq --CPU {threads} --output {params.outdir} 
+        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} 
     fi
-    mv {params.outdir}/Trinity.fasta {output}
+    mv {params.outdir}.Trinity.fasta {output}
     '''
 
 rule rnaspades_assemble:
