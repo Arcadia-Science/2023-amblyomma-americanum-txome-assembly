@@ -72,7 +72,7 @@ rule transrate:
         assembly="outputs/assemblies/merged/merged.fa",
         r1="left.fq.gz",
         r2="right.fq.gz"
-    output: "outputs/orthofuser/transrate_full/assemblies.csv"
+    output: "outputs/orthofuser/transrate_full/merged/contigs.csv"
     singularity: "docker://pgcbioinfo/transrate:1.0.3"
     params:
         outdir="outputs/orthofuser/transrate_full/"
@@ -81,67 +81,45 @@ rule transrate:
     transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.r1} --right {input.r2}
     '''
 
-rule separate_contig_names_into_one_orthogroup_per_file:
+rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
-    1. Find the Orthogroups.txt file and count its lines:
-       wc -l: Counts the number of lines in the file.
-       The result (number of lines) is stored in the END environment variable.
-
-    2. Generate a sequence of numbers from 1 to END:
-       The numbers 1 through END are generated, each separated by a space.
-       tr ' ' '\n': This translates spaces to newlines, so each number is on a new line.
-       The result is written to a file named list.
-
-    3. Process each line of the list file in parallel:
-       For each number in the list file, extract the corresponding line from the Orthogroups.txt file.
-       Split that line into multiple lines (one word or sequence of characters per line).
-       Remove the first of those lines.
-       Write the result to a .groups file in the outputs directory, with the filename being the number from the list file followed by .groups.
+    This rule replaces a lot of the bash/awk/grep/thousands of file writing steps in orthofuser/ORP with a python script.
+    It write the name of the highest scoring transcript (contig name) from transrate for each orthogroup.
     """
     input: 
-        orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
-    output:
-    params: outdir = "outputs/orthofuser/tmp"
+        orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
+        transrate = "outputs/orthofuser/transrate_full/merged/contigs.csv"
+    output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
-    # export the length of the orthogroups file as a shell var
-    export END=$(wc -l {input.orthogroups} | awk '{{print $1}}') && \
-    # make a file called "list" that has numbers 1:END, one per line
-    echo $(eval echo "{{1..$END}}") | tr ' ' '\n' > list
-    # # separate the groups out into different files
-    cat list | parallel  -j 1 -k "sed -n ''{{}}'p' {input.orthogroups} | tr ' ' '\n' | sed '1d' > {params.outdir}/{{1}}.groups"
-    '''
-
-rule add_transrate_info_to_each_orthogroup:
-    """
-    Using the *.groups files with orthogroup names, add transrate transcript scores from contigs.csv to each.
-    New files are output to *.orthout
-    """
-    input: 
-        contigs = "outputs/orthofuser/transrate_full/merged/contigs.csv",
-        groups = ""
-    shell:'''
-    # add the transrate results to the orthofinder groups
-    ls -rtd test/groups/* | parallel -j {threads} "grep -wf {{}} {input} > {{1}}.orthout"
-    '''
-
-rule select_highest_score_transcript_from_each_orthogroup:
-    """
-    2. Process .orthout files and save results to good.list:
-       This finds all .orthout files, processes each line in these files with awk to find the maximum value in the 14th column, and then appends the corresponding value from the 1st column to good.list. 
-    """
-    shell:'''
-    ls -rtd test/groups/*orthout | parallel -j 1 "awk -F, -v max=0 '{if(\$9>max){want=\$1; max=\$9}}END{print want}'" >> test/good.list
+    python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {input.orthogroups} {input.transrate} {output}    
     '''
 
 rule filter_by_name:
     """
     keep only contigs that ended up in good.list
     """
+    input:
+        fa="outputs/assemblies/merged/merged.fa",
+        lst="outputs/orthofuser/orthomerged/good.list"
+    output: "outputs/orthofuser/orthomerged/orthomerged.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk subseq {input.fa} {input.lst} > {output}
+    '''
+    
 
-rule cdhitest:
+rule run_diamond_on_orthomerged_txome:
     """
-    collapse at 0.98 identity, which should be removing nearly identical transcripts
     """
+    input: 
+        fa ="outputs/orthofuser/orthomerged/orthomerged.fa",
+        db = "" # swissprot
+    output: "outputs/orthofuser/diamond/orthomerged.diamond.txt"
+    conda: "envs/diamond.yml"
+    threads: 7
+    shell:'''
+    diamond blastx --quiet -p {threads} -e 1e-8 --top 0.1 -q {input.fa} -d {input.db} -o {output}
+    '''
 
 rule run_diamond_to_rescue_real_genes:
     """
@@ -149,3 +127,15 @@ rule run_diamond_to_rescue_real_genes:
     """
 
 rule determine_what_is_annotated_with_diamond_but_isnt_in_orthfuse_output:
+
+rule cdhitest:
+    """
+    collapse at 0.98 identity, which should be removing nearly identical transcripts
+    """
+    input: "outputs/orthofuser/orthomerged/orthomerged.fa"
+    output: "outputs/orthofuser/orthomerged/ORP_intermediate.fa"
+    conda: "envs/cd-hit.yml"
+    threads: 1
+    shell:'''
+    cd-hit-est -M 5000 -T {threads} -c .98 -i {input} -o {output}
+    '''
