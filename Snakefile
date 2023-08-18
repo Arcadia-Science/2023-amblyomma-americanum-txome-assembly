@@ -12,7 +12,8 @@ metadata_isoseq = metadata_filt[metadata_filt["instrument"] == "Sequel II"]
 # set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
 metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
 # set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
-metadata_illumina2 = metadata_illumina.set_index("assembly_group", drop = False)
+metadata_illumina2 = metadata_illumina[["assembly_group", "library_layout"]].drop_duplicates()
+metadata_illumina2 = metadata_illumina2.set_index("assembly_group", drop = False)
 
 # use metadata tables to create global variables
 # extract SRA accessions to a variable, which we'll use to download the raw data
@@ -167,9 +168,9 @@ rule trinity_assemble:
         outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir}
+        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} --full_cleanup
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} 
+        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} --full_cleanup 
     fi
     mv {params.outdir}.Trinity.fasta {output}
     '''
