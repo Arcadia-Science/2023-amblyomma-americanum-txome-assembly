@@ -1,56 +1,53 @@
-import pandas as pd
-import glob
 import sys
 
-
-def parse_diamond_gene_column(diamond_df):
+def parse_diamond_gene_column(line):
     """
-    Parse the gene_name column of a diamond dataframe.
+    Parse the gene_name column of a diamond dataframe line.
     
     Parameters:
-    - diamond_df (pd.DataFrame): DataFrame containing diamond output data.
+    - line (str): A single line from the diamond output file
     
     Returns:
-    - pd.DataFrame: Updated DataFrame with the gene_name parsed.
+    - tuple: Parsed values (contig_name, gene)
     """
-    # parse the gene_name column
-    diamond_df[['tmp', 'hit', 'gene']] = diamond_df['gene_name'].str.split('|', expand=True)
-    diamond_df[['gene', 'tmp2']] = diamond_df['gene'].str.split('_', expand=True)
+    # Splitting the line
+    values = line.strip().split('\t')
     
-    # drop unnecessary columns
-    diamond_df = diamond_df.drop(columns=['tmp', 'tmp2', 'hit'])
+    contig_name = values[0]
+    gene_name_parts = values[1].split('|')
+    gene = gene_name_parts[-1].split('_')[0]
     
-    return diamond_df
+    return contig_name, gene
 
 def main():
-    # get arguments from command line
     output_file = sys.argv[1]
     orthomerged_file = sys.argv[2]
     raw_files = sys.argv[3:]
 
-    # diamond blastx results column names 
-    diamond_colnames = ["contig_name", "gene_name", "pident", "length",
-                        "mismatches", "gap", "qstart", "qend", "sstart", "send",
-                        "evalue", "bitscore"]
+    orthomerged_genes = set()
+    with open(orthomerged_file, 'r') as f:
+        for line in f:
+            _, gene = parse_diamond_gene_column(line)
+            orthomerged_genes.add(gene)
 
-    # read in orthomerged diamond results
-    orthomerged = pd.read_csv(orthomerged_file, sep='\t', names=diamond_colnames)
-    orthomerged = parse_diamond_gene_column(orthomerged)
+    raw_contig_genes = {}
+    for raw_file in raw_files:
+        with open(raw_file, 'r') as f:
+            for line in f:
+                contig_name, gene = parse_diamond_gene_column(line)
+                if gene not in orthomerged_genes:
+                    # Use bitscore to decide which gene to associate with a contig.
+                    bitscore = float(line.strip().split('\t')[-1])
+                    if contig_name not in raw_contig_genes or bitscore > raw_contig_genes[contig_name][1]:
+                        raw_contig_genes[contig_name] = (gene, bitscore)
 
-    # read in raw assembly diamond results
-    dfs = [pd.read_csv(f, sep='\t', names=diamond_colnames) for f in raw_files]
-    raw = pd.concat(dfs, ignore_index=True)
-    raw = parse_diamond_gene_column(raw)
+    # Filter out contig_names already in orthomerged
+    contig_output = [contig for contig in raw_contig_genes.keys() if contig not in orthomerged_genes]
 
-    # determine which genes are annotated in raw assemblies but not in orthomerged
-    newbies = raw[~raw['gene'].isin(orthomerged['gene'])]
-    newbies = newbies.sort_values('bitscore', ascending=False).groupby('contig_name').head(1)
-    newbies = newbies[~newbies['contig_name'].isin(orthomerged['contig_name'])]
-
-    # drop duplicate contig names 
-    unique_contig_names = newbies['contig_name'].drop_duplicates()
-    # write a file containing the new contig_names 
-    unique_contig_names.to_csv(output_file, sep='\t', index=False, header=False)
+    # Save unique contig names to output file
+    with open(output_file, 'w') as f:
+        for contig in contig_output:
+            f.write(contig + '\n')
 
 if __name__ == "__main__":
     main()
