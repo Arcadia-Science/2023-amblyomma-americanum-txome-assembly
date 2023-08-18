@@ -4,9 +4,7 @@
 ASSEMBLY_GROUPS = ['petx120midgutfemale', 'petx120sgfemale']
 
 rule all:
-    input: 
-        "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
-        "outputs/orthofuser/transrate_full/assemblies.csv"
+    input: "outputs/orthofuser/orthofuser_final.fa"
 
 rule rename_contigs:
     """
@@ -107,13 +105,28 @@ rule filter_by_name:
     seqtk subseq {input.fa} {input.lst} > {output}
     '''
     
+rule download_diamond_database:
+    output: "inputs/databases/uniprot_sprot.fasta.gz"
+    shell:'''
+    # downloaded UniProt Release 2023_03 on 20230818
+    curl -JLo {output} http://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+    '''
+
+rule diamond_makedb:
+    input: "inputs/databases/uniprot_sprot.fasta.gz"
+    output: "inputs/databases/swissprot.dmnd"
+    params: dbprefix = "inputs/databases/swissprot"
+    conda: "envs/diamond.yml"
+    shell:'''
+    diamond makedb --in {input} --db {params.dbprefix}
+    '''
 
 rule run_diamond_on_orthomerged_txome:
     """
     """
     input: 
         fa ="outputs/orthofuser/orthomerged/orthomerged.fa",
-        db = "" # swissprot
+        db = "inputs/databases/swissprot.dmnd"
     output: "outputs/orthofuser/diamond/orthomerged.diamond.txt"
     conda: "envs/diamond.yml"
     threads: 7
@@ -125,15 +138,50 @@ rule run_diamond_to_rescue_real_genes:
     """
     run diamond on the raw, unprocessed transcriptomes
     """
+    input: 
+        fa = "outputs/assemblies/renamed/{assembly_group}_renamed.fa",
+        db = "inputs/databases/swissprot.dmnd"
+    output: "outputs/orthofuser/diamond/{assembly_group}.diamond.txt"
+    conda: "envs/diamond.yml"
+    threads: 7
+    shell:'''
+    diamond blastx --quiet -p {threads} -e 1e-8 --top 0.1 -q {input.fa} -d {input.db} -o {output}
+    '''
 
-rule determine_what_is_annotated_with_diamond_but_isnt_in_orthfuse_output:
+rule parse_diamond_gene_annotations_for_missed_transcripts: 
+    input:
+        orthomerged = "outputs/orthofuser/diamond/orthomerged.diamond.txt",
+        raw = expand("outputs/orthofuser/diamond/{assembly_group}.diamond.txt", assembly_group = ASSEMBLY_GROUPS)
+    output: "outputs/orthofuser/newbies/newbies.txt"
+    shell:'''
+    python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} 
+    '''
+
+rule grab_missed_transcripts:
+    input:
+        fa="outputs/assemblies/merged/merged.fa",
+        lst = "outputs/orthofuser/newbies/newbies.txt"
+    output: "outputs/orthofuser/newbies/newbies.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk subseq {input.fa} {input.lst} > {output}
+    '''
+
+rule combine_orthomerged_with_missed_transcripts:
+    input:
+        orthomerged = "outputs/orthofuser/orthomerged/orthomerged.fa",
+        newbies = "outputs/orthofuser/newbies/newbies.fa"
+    output: "outputs/orthofuser/newbies/orthomerged.fa"
+    shell:'''
+    cat {input.orthomerged} {input.newbies} > {output}
+    '''
 
 rule cdhitest:
     """
     collapse at 0.98 identity, which should be removing nearly identical transcripts
     """
-    input: "outputs/orthofuser/orthomerged/orthomerged.fa"
-    output: "outputs/orthofuser/orthomerged/ORP_intermediate.fa"
+    input: "outputs/orthofuser/newbies/orthomerged.fa"
+    output: "outputs/orthofuser/orthofuser_final.fa"
     conda: "envs/cd-hit.yml"
     threads: 1
     shell:'''
