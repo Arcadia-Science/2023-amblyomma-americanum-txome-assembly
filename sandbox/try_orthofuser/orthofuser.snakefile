@@ -1,7 +1,32 @@
-# start point -- combined assemblies
-# actually orthofuser may expect everything to be in separate files, but all in the same folder
+import pandas as pd
 
-ASSEMBLY_GROUPS = ['petx120midgutfemale', 'petx120sgfemale']
+# read in metadata file
+metadata_all = pd.read_csv("../../inputs/metadata.tsv", sep = "\t").set_index("run_accession", drop = False)
+# filter out samples that should be excluded (library prep was weird)
+metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
+# select columns that we need metadata from for wildcards and other places in the workflow
+metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout", "instrument"]]
+# separate the isoseq data bc it will be treated separately
+metadata_illumina = metadata_filt[metadata_filt["instrument"] != "Sequel II"].drop_duplicates()
+metadata_isoseq = metadata_filt[metadata_filt["instrument"] == "Sequel II"]
+# set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
+metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
+# set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
+metadata_illumina2 = metadata_illumina[["assembly_group", "library_layout"]].drop_duplicates()
+metadata_illumina2 = metadata_illumina2.set_index("assembly_group", drop = False)
+
+# use metadata tables to create global variables
+# extract SRA accessions to a variable, which we'll use to download the raw data
+RUN_ACCESSIONS = metadata_all["run_accession"].unique().tolist()
+# extract library names, which we'll use to control the quality control portion of the workflow
+# some libraries are split between multiple SRA accessions
+ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
+# extract assembly groups, which we'll use to control the asesmbly portion of the workflow
+ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
+
+# set the short read assemblers
+ASSEMBLERS = ["trinity", "rnaspades"]
+
 
 rule all:
     input: "outputs/orthofuser/orthofuser_final.fa"
@@ -10,8 +35,8 @@ rule rename_contigs:
     """
     we should talk to austin and figure out what his requirements are for transcript FASTA headers for noveltree
     """
-    input: "assemblies/{assembly_group}_rnaspades_soft_filtered_transcripts.fa"
-    output: "outputs/assemblies/renamed/{assembly_group}_renamed.fa"
+    input: "outputs/assemblies/{assembler}/{assembly_group}_{assembler}.fa"
+    output: "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa"
     conda: "envs/bbmap.yml"
     shell:'''
     bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
@@ -22,8 +47,8 @@ rule filter_by_length:
     Orthofuser filters to nucleotides greater than 200bp
     We'll use 75, since we're using 25 amino acids as our cut off
     """
-    input: "outputs/assemblies/renamed/{assembly_group}_renamed.fa"
-    output: "outputs/assemblies/filtered/{assembly_group}_filtered.fa"
+    input: "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa"
+    output: "outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa"
     conda: "envs/seqkit.yml"
     shell:'''
     seqkit seq -m 75 -o {output} {input}
@@ -41,20 +66,20 @@ rule orthofinder:
     * -t:  number of parallel sequence search threads [default = 10]
     * -a:  number of parallel analysis threads
     """
-    input: expand("outputs/assemblies/filtered/{assembly_group}_filtered.fa", assembly_group = ASSEMBLY_GROUPS)
+    input: expand("outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
     output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
     params: 
         indir="outputs/assemblies/filtered/",
         outdir = "outputs/orthofuser/orthofinder",
         outdirtmp = "outputs/orthofuser/orthofinder_tmp"
-    threads: 7
+    threads: 28
     conda: "envs/orthofinder.yml"
     shell:'''
     orthofinder -d -I 12 -f {params.indir} -o {params.outdirtmp} -og -t {threads} -a {threads} && mv {params.outdirtmp}/Results*/* {params.outdir}
     '''
 
 rule merge_txomes:
-    input: expand("outputs/assemblies/filtered/{assembly_group}_filtered.fa", assembly_group = ASSEMBLY_GROUPS)
+    input: expand("outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
     output: "outputs/assemblies/merged/merged.fa"
     shell:'''
     cat {input} > {output}
@@ -62,6 +87,8 @@ rule merge_txomes:
 
 rule transrate:
     '''
+    TransRate is a tool for reference-free quality assessment of de novo transcriptome assemblies.
+    It uses evidence like read mapping rate and length to score each contig.
     orthofuser uses a modified version of transrate,
     but it only uses an updated version of salmon and other bugs, which shouldn't change the functionality
     https://github.com/macmanes-lab/Oyster_River_Protocol/issues/46
@@ -74,7 +101,7 @@ rule transrate:
     singularity: "docker://pgcbioinfo/transrate:1.0.3"
     params:
         outdir="outputs/orthofuser/transrate_full/"
-    threads: 6
+    threads: 28
     shell:'''
     transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.r1} --right {input.r2}
     '''
@@ -82,7 +109,7 @@ rule transrate:
 rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
     This rule replaces a lot of the bash/awk/grep/thousands of file writing steps in orthofuser/ORP with a python script.
-    It write the name of the highest scoring transcript (contig name) from transrate for each orthogroup.
+    It writes the name of the highest scoring transcript (contig name) from transrate for each orthogroup.
     """
     input: 
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
@@ -129,7 +156,7 @@ rule run_diamond_on_orthomerged_txome:
         db = "inputs/databases/swissprot.dmnd"
     output: "outputs/orthofuser/diamond/orthomerged.diamond.txt"
     conda: "envs/diamond.yml"
-    threads: 7
+    threads: 28
     shell:'''
     diamond blastx --quiet -p {threads} -e 1e-8 --top 0.1 -q {input.fa} -d {input.db} -o {output}
     '''
@@ -139,11 +166,11 @@ rule run_diamond_to_rescue_real_genes:
     run diamond on the raw, unprocessed transcriptomes
     """
     input: 
-        fa = "outputs/assemblies/renamed/{assembly_group}_renamed.fa",
+        fa = "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa",
         db = "inputs/databases/swissprot.dmnd"
-    output: "outputs/orthofuser/diamond/{assembly_group}.diamond.txt"
+    output: "outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt"
     conda: "envs/diamond.yml"
-    threads: 7
+    threads: 28
     shell:'''
     diamond blastx --quiet -p {threads} -e 1e-8 --top 0.1 -q {input.fa} -d {input.db} -o {output}
     '''
@@ -151,7 +178,7 @@ rule run_diamond_to_rescue_real_genes:
 rule parse_diamond_gene_annotations_for_missed_transcripts: 
     input:
         orthomerged = "outputs/orthofuser/diamond/orthomerged.diamond.txt",
-        raw = expand("outputs/orthofuser/diamond/{assembly_group}.diamond.txt", assembly_group = ASSEMBLY_GROUPS)
+        raw = expand("outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
     output: "outputs/orthofuser/newbies/newbies.txt"
     shell:'''
     python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} 
