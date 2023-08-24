@@ -8,7 +8,7 @@ metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout", "instrument"]]
 # separate the isoseq data bc it will be treated separately
 metadata_illumina = metadata_filt[metadata_filt["instrument"] != "Sequel II"].drop_duplicates()
-metadata_isoseq = metadata_filt[metadata_filt["instrument"] == "Sequel II"]
+metadata_isoseq = metadata_all[metadata_filt["instrument"] == "Sequel II"]
 # set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
 metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
 # set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
@@ -216,16 +216,15 @@ rule rnaspades_assemble:
 # 4. Convert bam file into fasta file (BAMTOOLS CONVERT)
 # 5. Select reads with a polyA tail and trim it (GSTAMA_POLYACLEANUP)
 #
-# Since these steps have already been completed, the FASTQ file we're working with here already represents a non-redundant set of the longes
-t transcripts that could be derived from the raw data.
+# Since these steps have already been completed, the FASTQ file we're working with here already represents a non-redundant set of the longest transcripts that could be derived from the raw data.
 # We therefore only need to transform it into a FASTA file in order to include it in this analysis.
 #
 # In the future, if we need to do isoseq data processing, the first half of the nf-core/isoseq workflow has this above pipeline implemented.
 
 rule convert_isoseq_fastq_to_fasta:
-    input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSION)
+    input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSIONS)
     output: "outputs/isoseq/fasta/{isoseq_lib_name}.fa"
-    conda: "envs/bamtools.yml"
+    conda: "envs/seqtk.yml"
     shell:'''
-    bamtools convert -format fasta -in {input} -out {output}
+    seqtk seq -a {input} > {output}
     '''
