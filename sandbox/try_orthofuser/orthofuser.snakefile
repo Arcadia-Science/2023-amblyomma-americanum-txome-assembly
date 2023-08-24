@@ -8,7 +8,7 @@ metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout", "instrument"]]
 # separate the isoseq data bc it will be treated separately
 metadata_illumina = metadata_filt[metadata_filt["instrument"] != "Sequel II"].drop_duplicates()
-metadata_isoseq = metadata_filt[metadata_filt["instrument"] == "Sequel II"]
+metadata_isoseq = metadata_all[metadata_filt["instrument"] == "Sequel II"]
 # set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
 metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
 # set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
@@ -24,6 +24,10 @@ ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
 # extract assembly groups, which we'll use to control the asesmbly portion of the workflow
 ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
 
+# extract isoseq library names
+ISOSEQ_LIB_NAMES = metadata_isoseq['library_name'].unique().tolist()
+ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
+
 # set the short read assemblers
 ASSEMBLERS = ["trinity", "rnaspades"]
 
@@ -31,12 +35,35 @@ ASSEMBLERS = ["trinity", "rnaspades"]
 rule all:
     input: "outputs/orthofuser/orthofuser_final.fa"
 
+rule rename_isoseq_contigs:
+    """
+    we should talk to austin and figure out what his requirements are for transcript FASTA headers for noveltree
+    """
+    input: "outputs/assembly/isoseq/{isoseq_lib_name}.fa"
+    output: "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa"
+    conda: "envs/bbmap.yml"
+    shell:'''
+    bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
+    '''
+
+rule filter_isoseq_by_length:
+    """
+    Orthofuser filters to nucleotides greater than 200bp
+    We'll use 75, since we're using 25 amino acids as our cut off
+    """
+    input: "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa"
+    output: "outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa"
+    conda: "envs/seqkit.yml"
+    shell:'''
+    seqkit seq -m 75 -o {output} {input}
+    '''
+
 rule rename_contigs:
     """
     we should talk to austin and figure out what his requirements are for transcript FASTA headers for noveltree
     """
-    input: "outputs/assemblies/{assembler}/{assembly_group}_{assembler}.fa"
-    output: "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa"
+    input: "outputs/assembly/{assembler}/{assembly_group}_{assembler}.fa"
+    output: "outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa"
     conda: "envs/bbmap.yml"
     shell:'''
     bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
@@ -47,8 +74,8 @@ rule filter_by_length:
     Orthofuser filters to nucleotides greater than 200bp
     We'll use 75, since we're using 25 amino acids as our cut off
     """
-    input: "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa"
-    output: "outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa"
+    input: "outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa"
+    output: "outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa"
     conda: "envs/seqkit.yml"
     shell:'''
     seqkit seq -m 75 -o {output} {input}
@@ -66,10 +93,12 @@ rule orthofinder:
     * -t:  number of parallel sequence search threads [default = 10]
     * -a:  number of parallel analysis threads
     """
-    input: expand("outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
+    input: 
+        expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        expand("outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
     params: 
-        indir="outputs/assemblies/filtered/",
+        indir="outputs/assembly/filtered/",
         outdir = "outputs/orthofuser/orthofinder",
         outdirtmp = "outputs/orthofuser/orthofinder_tmp"
     threads: 28
@@ -79,7 +108,9 @@ rule orthofinder:
     '''
 
 rule merge_txomes:
-    input: expand("outputs/assemblies/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
+    input: 
+        expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        expand("outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/assemblies/merged/merged.fa"
     shell:'''
     cat {input} > {output}
@@ -94,7 +125,7 @@ rule transrate:
     https://github.com/macmanes-lab/Oyster_River_Protocol/issues/46
     '''
     input: 
-        assembly="outputs/assemblies/merged/merged.fa",
+        assembly="outputs/assembly/merged/merged.fa",
         r1="left.fq.gz",
         r2="right.fq.gz"
     output: "outputs/orthofuser/transrate_full/merged/contigs.csv"
@@ -124,7 +155,7 @@ rule filter_by_name:
     keep only contigs that ended up in good.list
     """
     input:
-        fa="outputs/assemblies/merged/merged.fa",
+        fa="outputs/assembly/merged/merged.fa",
         lst="outputs/orthofuser/orthomerged/good.list"
     output: "outputs/orthofuser/orthomerged/orthomerged.fa"
     conda: "envs/seqtk.yml"
@@ -166,9 +197,23 @@ rule run_diamond_to_rescue_real_genes:
     run diamond on the raw, unprocessed transcriptomes
     """
     input: 
-        fa = "outputs/assemblies/renamed/{assembly_group}_{assembler}_renamed.fa",
+        fa = "outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa",
         db = "inputs/databases/swissprot.dmnd"
     output: "outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt"
+    conda: "envs/diamond.yml"
+    threads: 28
+    shell:'''
+    diamond blastx --quiet -p {threads} -e 1e-8 --top 0.1 -q {input.fa} -d {input.db} -o {output}
+    '''
+
+rule run_diamond_to_rescue_real_genes_isoseq:
+    """
+    run diamond on the raw, unprocessed transcriptomes
+    """
+    input: 
+        fa = "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa",
+        db = "inputs/databases/swissprot.dmnd"
+    output: "outputs/orthofuser/diamond/{isoseq_lib_name}.diamond.txt"
     conda: "envs/diamond.yml"
     threads: 28
     shell:'''
@@ -178,10 +223,11 @@ rule run_diamond_to_rescue_real_genes:
 rule parse_diamond_gene_annotations_for_missed_transcripts: 
     input:
         orthomerged = "outputs/orthofuser/diamond/orthomerged.diamond.txt",
-        raw = expand("outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLER)
+        raw = expand("outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        isoseq = expand("outputs/orthofuser/diamond/{isoseq_lib_name}.diamond.txt", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/newbies/newbies.txt"
     shell:'''
-    python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} 
+    python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} {input.isoseq} 
     '''
 
 rule grab_missed_transcripts:
@@ -210,7 +256,7 @@ rule cdhitest:
     input: "outputs/orthofuser/newbies/orthomerged.fa"
     output: "outputs/orthofuser/orthofuser_final.fa"
     conda: "envs/cd-hit.yml"
-    threads: 1
+    threads: 4
     shell:'''
     cd-hit-est -M 5000 -T {threads} -c .98 -i {input} -o {output}
     '''
