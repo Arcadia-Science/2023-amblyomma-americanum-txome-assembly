@@ -49,7 +49,7 @@ rule combine_by_library_name:
     the output wildcard illumina_lib_name will only contain illumina library names.
     """
     input: expand("inputs/raw/{run_accession}.fq.gz", run_accession = RUN_ACCESSIONS)
-    output: expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    output: temp(expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES))
     params: 
         indir = "inputs/raw/",
         outdir = "outputs/raw_combined/"
@@ -162,15 +162,15 @@ rule trinity_assemble:
         r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
-    threads: 7
+    threads: 28
     params: 
         liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
         outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     shell:'''
     if [ "{params.liblayout}" == "PAIRED" ]; then
-        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} --full_cleanup
+        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup
     elif [ "{params.liblayout}" == "SINGLE" ]; then
-        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 16G --output {params.outdir} --full_cleanup 
+        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup 
     fi
     mv {params.outdir}.Trinity.fasta {output}
     '''
@@ -181,7 +181,7 @@ rule rnaspades_assemble:
         r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: 
         hard = "outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa",
-        soft = "outputs/assembly/rnaspades/{assembly_group}_rnaspades_soft_filtered_transcripts.fa",
+        soft = "outputs/assembly/rnaspades/{assembly_group}_rnaspades.fa"
     conda: "envs/spades.yml"
     threads: 4
     params: 
