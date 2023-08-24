@@ -21,7 +21,7 @@ RUN_ACCESSIONS = metadata_all["run_accession"].unique().tolist()
 # extract library names, which we'll use to control the quality control portion of the workflow
 # some libraries are split between multiple SRA accessions
 ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
-# extract assembly groups, which we'll use to control the asesmbly portion of the workflow
+# extract assembly groups, which we'll use to control the assembly portion of the workflow
 ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
 
 # extract isoseq library names
@@ -32,7 +32,7 @@ rule all:
     input: 
         expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
         expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS),
-        expand("outputs/isoseq/fasta/{isoseq_lib_name}.fa", isoseq_lib_name  = ISOSEQ_LIB_NAMES)
+        expand("outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
 
 rule download_fastq_files:
     output: temp("inputs/raw/{run_accession}.fq.gz")
@@ -223,7 +223,7 @@ rule rnaspades_assemble:
 
 rule convert_isoseq_fastq_to_fasta:
     input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSIONS)
-    output: "outputs/isoseq/fasta/{isoseq_lib_name}.fa"
+    output: "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa"
     conda: "envs/seqtk.yml"
     shell:'''
     seqtk seq -a {input} > {output}
