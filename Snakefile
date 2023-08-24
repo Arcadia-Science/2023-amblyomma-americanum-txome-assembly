@@ -24,10 +24,15 @@ ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
 # extract assembly groups, which we'll use to control the asesmbly portion of the workflow
 ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
 
+# extract isoseq library names
+ISOSEQ_LIB_NAMES = metadata_isoseq['library_name'].unique().tolist()
+ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
+
 rule all:
     input: 
         expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
-        expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS)
+        expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS),
+        expand("outputs/isoseq/fasta/{isoseq_lib_name}.fa", isoseq_lib_name  = ISOSEQ_LIB_NAMES)
 
 rule download_fastq_files:
     output: temp("inputs/raw/{run_accession}.fq.gz")
@@ -195,4 +200,32 @@ rule rnaspades_assemble:
     fi
     mv {params.outdir}/hard_filtered_transcripts.fasta {output.hard}
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
+    '''
+
+######################################
+## Process & assemble isoseq files
+######################################
+
+# The A americanum isoseq data on the SRA has already been processed.
+# In this case, the sample was processed by UC Berkeley's computational core using the PacBio endorsed workflow.
+#
+# This probably looks something like this:
+# 1. Generate CCS consensuses from raw isoseq subreads (bam file) (PBCCS)
+# 2. Remove primer sequences from consensuses (LIMA)
+# 3. Detect and remove chimeric reads (ISOSEQ3 REFINE)
+# 4. Convert bam file into fasta file (BAMTOOLS CONVERT)
+# 5. Select reads with a polyA tail and trim it (GSTAMA_POLYACLEANUP)
+#
+# Since these steps have already been completed, the FASTQ file we're working with here already represents a non-redundant set of the longes
+t transcripts that could be derived from the raw data.
+# We therefore only need to transform it into a FASTA file in order to include it in this analysis.
+#
+# In the future, if we need to do isoseq data processing, the first half of the nf-core/isoseq workflow has this above pipeline implemented.
+
+rule convert_isoseq_fastq_to_fasta:
+    input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSION)
+    output: "outputs/isoseq/fasta/{isoseq_lib_name}.fa"
+    conda: "envs/bamtools.yml"
+    shell:'''
+    bamtools convert -format fasta -in {input} -out {output}
     '''
