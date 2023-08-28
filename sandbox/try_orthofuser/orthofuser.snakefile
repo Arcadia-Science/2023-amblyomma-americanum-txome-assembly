@@ -31,32 +31,10 @@ ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
 # set the short read assemblers
 ASSEMBLERS = ["trinity", "rnaspades"]
 
+READS = ['R1', 'R2']
 
 rule all:
     input: "outputs/orthofuser/orthofuser_final.fa"
-
-rule rename_isoseq_contigs:
-    """
-    we should talk to austin and figure out what his requirements are for transcript FASTA headers for noveltree
-    """
-    input: "outputs/assembly/isoseq/{isoseq_lib_name}.fa"
-    output: "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa"
-    conda: "envs/bbmap.yml"
-    shell:'''
-    bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
-    '''
-
-rule filter_isoseq_by_length:
-    """
-    Orthofuser filters to nucleotides greater than 200bp
-    We'll use 75, since we're using 25 amino acids as our cut off
-    """
-    input: "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa"
-    output: "outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa"
-    conda: "envs/seqkit.yml"
-    shell:'''
-    seqkit seq -m 75 -o {output} {input}
-    '''
 
 rule rename_contigs:
     """
@@ -94,24 +72,34 @@ rule orthofinder:
     * -a:  number of parallel analysis threads
     """
     input: 
-        expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        expand("outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        illumina = expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
     params: 
         indir="outputs/assembly/filtered/",
-        outdir = "outputs/orthofuser/orthofinder",
         outdirtmp = "outputs/orthofuser/orthofinder_tmp"
     threads: 28
     conda: "envs/orthofinder.yml"
     shell:'''
-    orthofinder -d -I 12 -f {params.indir} -o {params.outdirtmp} -og -t {threads} -a {threads} && mv {params.outdirtmp}/Results*/* {params.outdir}
+    # put the isoseq data in the same folder as the illumina assemblies
+    # in this case, since we only have one isoseq file, we can do a simple cp instead of a for loop
+    cp {input.isoseq} {params.indir}
+    orthofinder -d -I 12 -f {params.indir} -o {params.outdirtmp} -og -t {threads}
+    cp {params.outdirtmp}/Results*/Orthogroups/Orthogroups.txt {output}
     '''
 
 rule merge_txomes:
     input: 
         expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        expand("outputs/assembly/filtered/{isoseq_lib_name}_filtered.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
-    output: "outputs/assemblies/merged/merged.fa"
+        expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+    output: "outputs/assembly/merged/merged.fa"
+    shell:'''
+    cat {input} > {output}
+    '''
+
+rule combine_reads:
+    input: expand("../../outputs/fastp_separated_reads/{illumina_lib_name}_{{read}}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    output: "outputs/fastp_separated_reads_combined/{read}.fq.gz"
     shell:'''
     cat {input} > {output}
     '''
@@ -126,15 +114,13 @@ rule transrate:
     '''
     input: 
         assembly="outputs/assembly/merged/merged.fa",
-        r1="left.fq.gz",
-        r2="right.fq.gz"
+        reads=expand("outputs/fastp_separated_reads_combined/{read}.fq.gz", read = READS)
     output: "outputs/orthofuser/transrate_full/merged/contigs.csv"
     singularity: "docker://pgcbioinfo/transrate:1.0.3"
-    params:
-        outdir="outputs/orthofuser/transrate_full/"
+    params: outdir="outputs/orthofuser/transrate_full/"
     threads: 28
     shell:'''
-    transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.r1} --right {input.r2}
+    transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
     '''
 
 rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
@@ -211,7 +197,7 @@ rule run_diamond_to_rescue_real_genes_isoseq:
     run diamond on the raw, unprocessed transcriptomes
     """
     input: 
-        fa = "outputs/assembly/renamed/{isoseq_lib_name}_renamed.fa",
+        fa = "outputs/assembly/isoseq/{isoseq_lib_name}.fa",
         db = "inputs/databases/swissprot.dmnd"
     output: "outputs/orthofuser/diamond/{isoseq_lib_name}.diamond.txt"
     conda: "envs/diamond.yml"
@@ -232,7 +218,7 @@ rule parse_diamond_gene_annotations_for_missed_transcripts:
 
 rule grab_missed_transcripts:
     input:
-        fa="outputs/assemblies/merged/merged.fa",
+        fa="outputs/assembly/merged/merged.fa",
         lst = "outputs/orthofuser/newbies/newbies.txt"
     output: "outputs/orthofuser/newbies/newbies.fa"
     conda: "envs/seqtk.yml"
