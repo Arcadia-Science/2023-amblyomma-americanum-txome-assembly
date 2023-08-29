@@ -27,7 +27,8 @@ ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
 rule all:
     input: 
         expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
-        expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS)
+        expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades.fa", assembly_group = ASSEMBLY_GROUPS),
+        expand("outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
 
 rule download_fastq_files:
     output: temp("inputs/raw/{run_accession}.fq.gz")
@@ -195,4 +196,20 @@ rule rnaspades_assemble:
     fi
     mv {params.outdir}/hard_filtered_transcripts.fasta {output.hard}
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
+    '''
+
+rule split_paired_end_reads_fastp:
+    input: fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
+    output:
+        r1="outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+    conda: "envs/bbmap.yml"
+    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
+    shell:'''
+    if [ "{params.liblayout}" == "PAIRED" ]; then
+        repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
+    elif [ "{params.liblayout}" == "SINGLE" ]; then
+        cp {input} {output.r1}
+        touch {output.r2}
+    fi
     '''
