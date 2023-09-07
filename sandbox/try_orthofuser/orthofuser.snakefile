@@ -29,7 +29,8 @@ ISOSEQ_LIB_NAMES = metadata_isoseq['library_name'].unique().tolist()
 ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
 
 # set the short read assemblers
-ASSEMBLERS = ["trinity", "rnaspades"]
+# ASSEMBLERS = ["trinity", "rnaspades"]
+ASSEMBLERS = ["rnaspades"]
 
 READS = ['R1', 'R2']
 
@@ -97,6 +98,22 @@ rule merge_txomes:
     cat {input} > {output}
     '''
 
+rule cdhit_merge_txomes:
+    '''
+    remove perfect duplicates.
+    emulates cd-hit: https://github.com/soedinglab/MMseqs2/issues/601
+    '''
+    input: "outputs/assembly/merged/merged.fa"
+    output: "outputs/assembly/merged/merged_rep_seq.fasta"
+    params: outprefix="outputs/assembly/merged/merged"
+    conda: "envs/mmseqs2.yml"
+    threads: 8
+    shell:'''
+    # cd-hit-est -i {input} -o {output} -c 1 -T {threads} -M 12000
+    mkdir -p tmp
+    mmseqs easy-cluster {input} {params.outprefix} tmp -c 0.97 --cov-mode 1 --min-seq-id 1.0 --exact-kmer-matching 1 --threads {threads}
+    '''
+
 rule combine_reads:
     input: expand("../../outputs/fastp_separated_reads/{illumina_lib_name}_{{read}}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
     output: "outputs/fastp_separated_reads_combined/{read}.fq.gz"
@@ -111,16 +128,31 @@ rule transrate:
     orthofuser uses a modified version of transrate,
     but it only uses an updated version of salmon and other bugs, which shouldn't change the functionality
     https://github.com/macmanes-lab/Oyster_River_Protocol/issues/46
+    
+    From the CLI help message, location size is: The  size  of  the  genome  locations stored in the index.  This can be from 4 to 8
+              bytes.  The locations need to be big enough not only to index the genome, but  also
+              to  allow  some  space  for  representing seeds that occur multiple times.  For the
+              human genome, it will fit with four byte locations  if  the  seed  size  is  19  or
+              larger,  but  needs 5 (or more) for smaller seeds.  Making the location size bigger
+              than necessary will just waste (lots of) space, so unless  you're  doing  something
+              quite unusual, the right answer is 4 or 5.  Default is 4
+    
+    Justification for using diginorm'd reads for mapping: https://github.com/blahah/transrate/issues/225
+    cat ../../outputs/assembly_group_separated_reads/*R1.fq.gz > R1.fq.gz
     '''
     input: 
-        assembly="outputs/assembly/merged/merged.fa",
-        reads=expand("outputs/fastp_separated_reads_combined/{read}.fq.gz", read = READS)
-    output: "outputs/orthofuser/transrate_full/merged/contigs.csv"
-    singularity: "docker://pgcbioinfo/transrate:1.0.3"
-    params: outdir="outputs/orthofuser/transrate_full/"
+        #assembly="outputs/assembly/merged/merged_rep_seq.fasta",
+        assembly="outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa",
+        #reads=expand("outputs/fastp_separated_reads_combined/{read}.fq.gz", read = READS)
+        reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
+    output: "outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv"
+    #singularity: "docker://pgcbioinfo/transrate:1.0.3"
+    singularity: "docker://macmaneslab/orp:2.3.3"
+    params: outdir= "outputs/orthofuser/transrate_full"
     threads: 28
     shell:'''
     transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
+    mv {params.outdir}/assemblies.csv {params.outdir}/{wildcards.assembly_group}_{wildcards.assembler}_filtered_assemblies.csv
     '''
 
 rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
@@ -130,7 +162,8 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
     input: 
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
-        transrate = "outputs/orthofuser/transrate_full/merged/contigs.csv"
+        #transrate = "outputs/orthofuser/transrate_full/merged/contigs.csv"
+        transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS)
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
     python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {input.orthogroups} {input.transrate} {output}    
