@@ -48,17 +48,6 @@ rule rename_contigs:
     bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
     '''
 
-rule filter_by_length:
-    """
-    Orthofuser filters to nucleotides greater than 200bp
-    We'll use 75, since we're using 25 amino acids as our cut off
-    """
-    input: "outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa"
-    output: "outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa"
-    conda: "envs/seqkit.yml"
-    shell:'''
-    seqkit seq -m 75 -o {output} {input}
-    '''
 
 rule orthofinder:
     """
@@ -98,7 +87,7 @@ rule merge_txomes:
     cat {input} > {output}
     '''
 
-rule cdhit_merge_txomes:
+rule deduplicate_merged_txomes:
     '''
     remove perfect duplicates.
     emulates cd-hit: https://github.com/soedinglab/MMseqs2/issues/601
@@ -109,44 +98,67 @@ rule cdhit_merge_txomes:
     conda: "envs/mmseqs2.yml"
     threads: 8
     shell:'''
-    # cd-hit-est -i {input} -o {output} -c 1 -T {threads} -M 12000
     mkdir -p tmp
     mmseqs easy-cluster {input} {params.outprefix} tmp -c 0.97 --cov-mode 1 --min-seq-id 1.0 --exact-kmer-matching 1 --threads {threads}
     '''
 
-rule combine_reads:
-    input: expand("../../outputs/fastp_separated_reads/{illumina_lib_name}_{{read}}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
-    output: "outputs/fastp_separated_reads_combined/{read}.fq.gz"
+rule grab_deduplicated_contig_names:
+    """
+    grab fasta header names and remove the prefix ">"
+    """
+    input: "outputs/assembly/merged/merged_rep_seq.fasta"
+    output: "outputs/assembly/merged/merged_rep_seq_names.txt"
     shell:'''
-    cat {input} > {output}
+    grep -e ">" {input} | awk 'sub(/^>/, "")' > {output} 
     '''
 
-rule transrate:
+rule filter_original_assemblies_by_deduplicated_names:
+    """
+    remove perfect duplicates from each original txome before running transrate or orthofinder.
+    this step shares info between transcriptomes and is intended to remove small fragments that are part of larger transcripts in different assemblies and remove perfect duplicates between different assemblers.
+    filtering is fast, while both transrate and orthofinder are slow.
+    """
+    input:
+        fa="outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa",
+        lst="outputs/assembly/merged/merged_rep_seq_names.txt"
+    output: "outputs/assembly/filtered_duplicates/{assembly_group}_{assembler}_filtered.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk subseq {input.fa} {input.lst} > {output}
     '''
+
+rule filter_by_length:
+    """
+    Orthofuser filters to nucleotides greater than 200bp
+    We'll use 75, since we're using 25 amino acids as our cut off (which syncs with what noveltree uses)
+    """
+    input: "outputs/assembly/filtered_duplicates/{assembly_group}_{assembler}_filtered.fa" 
+    output: "outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered.fa"
+    conda: "envs/seqkit.yml"
+    shell:'''
+    seqkit seq -m 75 -o {output} {input}
+    '''
+
+# TODO: add a rule to keep anything smaller than 75 and then come up with a strategy to work with this set (search for peptides, etc).
+
+rule transrate:
+    """
     TransRate is a tool for reference-free quality assessment of de novo transcriptome assemblies.
     It uses evidence like read mapping rate and length to score each contig.
     orthofuser uses a modified version of transrate,
     but it only uses an updated version of salmon and other bugs, which shouldn't change the functionality
     https://github.com/macmanes-lab/Oyster_River_Protocol/issues/46
     
-    From the CLI help message, location size is: The  size  of  the  genome  locations stored in the index.  This can be from 4 to 8
-              bytes.  The locations need to be big enough not only to index the genome, but  also
-              to  allow  some  space  for  representing seeds that occur multiple times.  For the
-              human genome, it will fit with four byte locations  if  the  seed  size  is  19  or
-              larger,  but  needs 5 (or more) for smaller seeds.  Making the location size bigger
-              than necessary will just waste (lots of) space, so unless  you're  doing  something
-              quite unusual, the right answer is 4 or 5.  Default is 4
-    
+    Ideally, we would run transrate on the merged transcriptome and map with merged reads. 
+    For this transcriptome, the assembly is too complex (est. 1M contig limit) and there are too many reads, both of which cause transrate to fail.
+    For this reason, we run transrate separately on each assembly group and then combine the scores to get the contig scores. 
     Justification for using diginorm'd reads for mapping: https://github.com/blahah/transrate/issues/225
-    cat ../../outputs/assembly_group_separated_reads/*R1.fq.gz > R1.fq.gz
-    '''
+    """
     input: 
-        #assembly="outputs/assembly/merged/merged_rep_seq.fasta",
-        assembly="outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa",
+        assembly="outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered.fa",
         #reads=expand("outputs/fastp_separated_reads_combined/{read}.fq.gz", read = READS)
         reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
     output: "outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv"
-    #singularity: "docker://pgcbioinfo/transrate:1.0.3"
     singularity: "docker://macmaneslab/orp:2.3.3"
     params: outdir= "outputs/orthofuser/transrate_full"
     threads: 28
@@ -162,7 +174,6 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
     input: 
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
-        #transrate = "outputs/orthofuser/transrate_full/merged/contigs.csv"
         transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS)
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
@@ -174,7 +185,7 @@ rule filter_by_name:
     keep only contigs that ended up in good.list
     """
     input:
-        fa="outputs/assembly/merged/merged.fa",
+        fa="outputs/assembly/merged/merged_rep_seq.fasta",
         lst="outputs/orthofuser/orthomerged/good.list"
     output: "outputs/orthofuser/orthomerged/orthomerged.fa"
     conda: "envs/seqtk.yml"
@@ -200,6 +211,7 @@ rule diamond_makedb:
 
 rule run_diamond_on_orthomerged_txome:
     """
+    get minimal annotations for the orthomerged transcriptome to see what genes are present.
     """
     input: 
         fa ="outputs/orthofuser/orthomerged/orthomerged.fa",
@@ -216,7 +228,7 @@ rule run_diamond_to_rescue_real_genes:
     run diamond on the raw, unprocessed transcriptomes
     """
     input: 
-        fa = "outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa",
+        fa = "outputs/assembly/filtered_duplicates/{assembly_group}_{assembler}_filtered.fa",
         db = "inputs/databases/swissprot.dmnd"
     output: "outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt"
     conda: "envs/diamond.yml"
@@ -251,7 +263,7 @@ rule parse_diamond_gene_annotations_for_missed_transcripts:
 
 rule grab_missed_transcripts:
     input:
-        fa="outputs/assembly/merged/merged.fa",
+        fa="outputs/assembly/merged/merged_rep_seq.fasta",
         lst = "outputs/orthofuser/newbies/newbies.txt"
     output: "outputs/orthofuser/newbies/newbies.fa"
     conda: "envs/seqtk.yml"
@@ -279,3 +291,5 @@ rule cdhitest:
     shell:'''
     cd-hit-est -M 5000 -T {threads} -c .98 -i {input} -o {output}
     '''
+
+# consider another round of orthofinder & transrate 
