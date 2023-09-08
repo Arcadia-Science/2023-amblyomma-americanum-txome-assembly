@@ -48,36 +48,6 @@ rule rename_contigs:
     bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
     '''
 
-
-rule orthofinder:
-    """
-    orthofuser runs this step with orthofuser.py. 
-    Orthofuser.py is a modified version of orthofinder that accepted nucleotides before orthofinder was set up to do that.
-    since orthofinder will now run on nucleotdies on its own, we can use that directly
-    * -d:  input is DNA sequence
-    * -f:  input folder
-    * -I:  MCL parameter
-    * -og: stop after inferring orthogroups
-    * -t:  number of parallel sequence search threads [default = 10]
-    * -a:  number of parallel analysis threads
-    """
-    input: 
-        illumina = expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
-    output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
-    params: 
-        indir="outputs/assembly/filtered/",
-        outdirtmp = "outputs/orthofuser/orthofinder_tmp"
-    threads: 28
-    conda: "envs/orthofinder.yml"
-    shell:'''
-    # put the isoseq data in the same folder as the illumina assemblies
-    # in this case, since we only have one isoseq file, we can do a simple cp instead of a for loop
-    cp {input.isoseq} {params.indir}
-    orthofinder -d -I 12 -f {params.indir} -o {params.outdirtmp} -og -t {threads}
-    cp {params.outdirtmp}/Results*/Orthogroups/Orthogroups.txt {output}
-    '''
-
 rule merge_txomes:
     input: 
         expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
@@ -139,7 +109,44 @@ rule filter_by_length:
     seqkit seq -m 75 -o {output} {input}
     '''
 
+rule orthofinder:
+    """
+    orthofuser runs this step with orthofuser.py. 
+    Orthofuser.py is a modified version of orthofinder that accepted nucleotides before orthofinder was set up to do that.
+    since orthofinder will now run on nucleotdies on its own, we can use that directly
+    * -d:  input is DNA sequence
+    * -f:  input folder
+    * -I:  MCL parameter
+    * -og: stop after inferring orthogroups
+    * -t:  number of parallel sequence search threads [default = 10]
+    * -a:  number of parallel analysis threads
+    """
+    input: 
+        illumina = expand("outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+    output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
+    params: 
+        indir="outputs/assembly/filtered/",
+        outdirtmp = "outputs/orthofuser/orthofinder_tmp"
+    threads: 28
+    conda: "envs/orthofinder.yml"
+    shell:'''
+    # put the isoseq data in the same folder as the illumina assemblies
+    # in this case, since we only have one isoseq file, we can do a simple cp instead of a for loop
+    cp {input.isoseq} {params.indir}
+    orthofinder -d -I 12 -f {params.indir} -o {params.outdirtmp} -og -t {threads}
+    cp {params.outdirtmp}/Results*/Orthogroups/Orthogroups.txt {output}
+    '''
+
 # TODO: add a rule to keep anything smaller than 75 and then come up with a strategy to work with this set (search for peptides, etc).
+
+rule merge_by_assembly_group_for_transrate_round1:
+    input: 
+        expand("outputs/assembly/filtered/{{assembly_group}}_{assembler}_filtered.fa", assembler = ASSEMBLERS),
+    output: "outputs/assembly/merged/{assembly_group}_merged_filtered.fa"
+    shell:'''
+    cat {input} > {output}
+    '''
 
 rule transrate:
     """
@@ -155,16 +162,18 @@ rule transrate:
     Justification for using diginorm'd reads for mapping: https://github.com/blahah/transrate/issues/225
     """
     input: 
-        assembly="outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered.fa",
+        assembly="outputs/assembly/merged/{assembly_group}_merged_filtered.fa",
         #reads=expand("outputs/fastp_separated_reads_combined/{read}.fq.gz", read = READS)
         reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
-    output: "outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv"
+    output: "outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv"
     singularity: "docker://macmaneslab/orp:2.3.3"
     params: outdir= "outputs/orthofuser/transrate_full"
     threads: 28
     shell:'''
     transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
-    mv {params.outdir}/assemblies.csv {params.outdir}/{wildcards.assembly_group}_{wildcards.assembler}_filtered_assemblies.csv
+    mv {params.outdir}/assemblies.csv {params.outdir}/{wildcards.assembly_group}_merged_filtered_assemblies.csv
+    # cleanup big output files
+    rm {params.outdir}/{wildcards.assembly_group}_merged_filtered/*bam
     '''
 
 rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
@@ -174,7 +183,7 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
     input: 
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
-        transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_{assembler}_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS)
+        transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS)
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
     python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {input.orthogroups} {input.transrate} {output}    
@@ -292,4 +301,4 @@ rule cdhitest:
     cd-hit-est -M 5000 -T {threads} -c .98 -i {input} -o {output}
     '''
 
-# consider another round of orthofinder & transrate 
+# consider another round of transrate using the diginorm'd full read set on the first "orthofuser_final.fa" transcriptome
