@@ -126,7 +126,7 @@ rule orthofinder:
         isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
     params: 
-        indir="outputs/assembly/filtered/",
+        indir="outputs/assembly/filtered_size/",
         outdirtmp = "outputs/orthofuser/orthofinder_tmp"
     threads: 28
     conda: "envs/orthofinder.yml"
