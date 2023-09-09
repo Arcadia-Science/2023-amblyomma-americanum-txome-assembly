@@ -50,7 +50,7 @@ rule rename_contigs:
 
 rule merge_txomes:
     input: 
-        expand("outputs/assembly/filtered/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
+        expand("outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
         expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/assembly/merged/merged.fa"
     shell:'''
@@ -142,7 +142,7 @@ rule orthofinder:
 
 rule merge_by_assembly_group_for_transrate_round1:
     input: 
-        expand("outputs/assembly/filtered/{{assembly_group}}_{assembler}_filtered.fa", assembler = ASSEMBLERS),
+        expand("outputs/assembly/filtered_duplicates/{{assembly_group}}_{assembler}_filtered.fa", assembler = ASSEMBLERS),
     output: "outputs/assembly/merged/{assembly_group}_merged_filtered.fa"
     shell:'''
     cat {input} > {output}
