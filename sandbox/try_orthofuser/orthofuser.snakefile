@@ -30,7 +30,7 @@ ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
 
 # set the short read assemblers
 # ASSEMBLERS = ["trinity", "rnaspades"]
-ASSEMBLERS = ["rnaspades"]
+ASSEMBLERS = ["rnaspades", "trinity"]
 
 READS = ['R1', 'R2']
 
@@ -48,7 +48,7 @@ rule rename_contigs:
     bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
     '''
 
-rule merge_txomes:
+rule merge_txomes_all:
     input: 
         expand("outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
         expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
@@ -57,7 +57,7 @@ rule merge_txomes:
     cat {input} > {output}
     '''
 
-rule deduplicate_merged_txomes:
+rule deduplicate_merged_txomes_with_mmseqs:
     '''
     remove perfect duplicates.
     emulates cd-hit: https://github.com/soedinglab/MMseqs2/issues/601
