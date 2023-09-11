@@ -186,7 +186,7 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
         transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS)
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
-    python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {input.orthogroups} {input.transrate} {output}    
+    python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {output} {input.orthogroups} {input.transrate}
     '''
 
 rule filter_by_name:
