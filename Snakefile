@@ -542,7 +542,7 @@ rule salmon_index:
 rule salmon_quant:
     input:
         index = "outputs/salmon/orthofuser_final_index/info.json",
-        reads=expand("outputs/{assembly_group}_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
+        reads=expand("outputs/{{assembly_group}}_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
     output: "outputs/salmon/{assembly_group}_quant/quant.sf"
     params:
         indexdir = "outputs/salmon/orthofuser_final_index/",
