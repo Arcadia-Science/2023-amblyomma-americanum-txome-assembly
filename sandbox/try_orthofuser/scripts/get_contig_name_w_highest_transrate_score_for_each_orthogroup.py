@@ -12,19 +12,20 @@ def read_orthogroups(filepath):
 
     return orthogroups
 
-def process_contigs_csv(filepath, orthogroups):
+def process_contigs_csv(filepaths, orthogroups):
     contig_scores = {}
     contig_coverage = {}
 
-    with open(filepath, 'r') as file:
-        header = file.readline().strip().split(',')
-        score_idx = header.index("score")
-        coverage_idx = header.index("coverage")
+    for filepath in filepaths:
+        with open(filepath, 'r') as file:
+            header = file.readline().strip().split(',')
+            score_idx = header.index("score")
+            coverage_idx = header.index("coverage")
 
-        for line in file:
-            parts = line.strip().split(',')
-            contig_scores[parts[0]] = float(parts[score_idx])
-            contig_coverage[parts[0]] = float(parts[coverage_idx])
+            for line in file:
+                parts = line.strip().split(',')
+                contig_scores[parts[0]] = float(parts[score_idx])
+                contig_coverage[parts[0]] = float(parts[coverage_idx])
 
     best_contigs = []
 
@@ -35,16 +36,15 @@ def process_contigs_csv(filepath, orthogroups):
     return best_contigs
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process orthogroups and contigs.")
-    parser.add_argument("orthogroups_path", help="Path to the orthogroups file")
-    parser.add_argument("contigs_csv_path", help="Path to the contigs.csv file")
+    parser = argparse.ArgumentParser(description="Process orthogroups and contigs. For each orthogroup, select the contig with the highest transrate score.")
     parser.add_argument("output_path", help="Path for the output file")
+    parser.add_argument("orthogroups_path", help="Path to the orthogroups file")
+    parser.add_argument("contigs_csv_paths", nargs='+', help="Paths to the contigs.csv files")
     args = parser.parse_args()
 
     orthogroups = read_orthogroups(args.orthogroups_path)
-    best_contigs = process_contigs_csv(args.contigs_csv_path, orthogroups)
+    best_contigs = process_contigs_csv(args.contigs_csv_paths, orthogroups)
 
     with open(args.output_path, 'w') as out_file:
         for contig in best_contigs:
             out_file.write(f"{contig}\n")
-
