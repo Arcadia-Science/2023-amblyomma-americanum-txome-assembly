@@ -32,6 +32,7 @@ rule all:
     input: 
         expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
         expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades.fa", assembly_group = ASSEMBLY_GROUPS),
+        expand("outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES),
         expand("outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
 
 rule download_fastq_files:
