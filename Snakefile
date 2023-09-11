@@ -34,7 +34,7 @@ ASSEMBLERS = ["rnaspades", "trinity"]
 READS = ['R1', 'R2']
 
 # set contam screen params
-LINEAGES = ['contam', 'bacteria', 'fungi', 'archaea', 'protozoa']
+LINEAGES = ['contam', 'bacteria', 'archaea', 'protozoa']
 KSIZES = [21]
 
 rule all:
