@@ -245,7 +245,7 @@ rule split_paired_end_reads_fastp:
 
 rule convert_isoseq_fastq_to_fasta:
     input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSIONS)
-    output: "outputs/assembly/isoseq/{isoseq_lib_name}.fa"
+    output: "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa"
     conda: "envs/seqtk.yml"
     shell:'''
     seqtk seq -a {input} > {output}
@@ -274,7 +274,7 @@ rule merge_txomes_all:
     '''
     input:
         expand("outputs/assembly/renamed/{assembly_group}_{assembler}_renamed.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        expand("outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/assembly/merged/merged.fa"
     shell:'''
     cat {input} > {output}
@@ -349,7 +349,7 @@ rule orthofinder:
     """
     input:
         illumina = expand("outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        isoseq = expand("outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt"
     params:
         indir="outputs/assembly/filtered_size/",
@@ -475,9 +475,9 @@ rule run_diamond_to_rescue_real_genes_isoseq:
     run diamond on the raw, unprocessed transcriptomes
     """
     input:
-        fa = "outputs/assembly/isoseq/{isoseq_lib_name}.fa",
+        fa = "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa",
         db = "inputs/databases/swissprot.dmnd"
-    output: "outputs/orthofuser/diamond/{isoseq_lib_name}.diamond.txt"
+    output: "outputs/orthofuser/diamond/{isoseq_lib_name}_isoseq.diamond.txt"
     conda: "envs/diamond.yml"
     threads: 28
     shell:'''
@@ -488,7 +488,7 @@ rule parse_diamond_gene_annotations_for_missed_transcripts:
     input:
         orthomerged = "outputs/orthofuser/diamond/orthomerged.diamond.txt",
         raw = expand("outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        isoseq = expand("outputs/orthofuser/diamond/{isoseq_lib_name}.diamond.txt", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        isoseq = expand("outputs/orthofuser/diamond/{isoseq_lib_name}_isoseq.diamond.txt", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/newbies/newbies.txt"
     shell:'''
     python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} {input.isoseq}
