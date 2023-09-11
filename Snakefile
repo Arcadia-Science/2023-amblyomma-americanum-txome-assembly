@@ -477,7 +477,7 @@ rule run_diamond_to_rescue_real_genes_isoseq:
     input:
         fa = "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa",
         db = "inputs/databases/swissprot.dmnd"
-    output: "outputs/orthofuser/diamond/{isoseq_lib_name}_isoseq.diamond.txt"
+    output: "outputs/orthofuser/diamond_isoseq/{isoseq_lib_name}_isoseq.diamond.txt"
     conda: "envs/diamond.yml"
     threads: 28
     shell:'''
@@ -488,7 +488,7 @@ rule parse_diamond_gene_annotations_for_missed_transcripts:
     input:
         orthomerged = "outputs/orthofuser/diamond/orthomerged.diamond.txt",
         raw = expand("outputs/orthofuser/diamond/{assembly_group}_{assembler}.diamond.txt", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS),
-        isoseq = expand("outputs/orthofuser/diamond/{isoseq_lib_name}_isoseq.diamond.txt", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        isoseq = expand("outputs/orthofuser/diamond_isoseq/{isoseq_lib_name}_isoseq.diamond.txt", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/newbies/newbies.txt"
     shell:'''
     python scripts/parse_diamond_gene_annotations_for_missed_transcripts.py {output} {input.orthomerged} {input.raw} {input.isoseq}
