@@ -228,26 +228,3 @@ rule convert_isoseq_fastq_to_fasta:
     shell:'''
     seqtk seq -a {input} > {output}
     '''
-
-rule rename_isoseq_contigs:
-    """
-    we should talk to austin and figure out what his requirements are for transcript FASTA headers for noveltree
-    """
-    input: "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa"
-    output: "outputs/assembly/renamed/{isoseq_lib_name}_isoseq_renamed.fa"
-    conda: "envs/bbmap.yml"
-    shell:'''
-    bbrename.sh in={input} out={output} prefix={wildcards.assembly_group} addprefix=t
-    '''
-
-rule filter_isoseq_by_length:
-    """
-    Orthofuser filters to nucleotides greater than 200bp
-    We'll use 75, since we're using 25 amino acids as our cut off
-    """
-    input: "outputs/assembly/renamed/{isoseq_lib_name}_isoseq_renamed.fa" 
-    output: "outputs/assembly/filtered/{isoseq_lib_name}_isoseq_filtered.fa"
-    conda: "envs/seqkit.yml"
-    shell:'''
-    seqkit seq -m 75 -o {output} {input}
-    '''
