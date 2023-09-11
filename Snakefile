@@ -8,7 +8,7 @@ metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout", "instrument"]]
 # separate the isoseq data bc it will be treated separately
 metadata_illumina = metadata_filt[metadata_filt["instrument"] != "Sequel II"].drop_duplicates()
-metadata_isoseq = metadata_filt[metadata_filt["instrument"] == "Sequel II"]
+metadata_isoseq = metadata_all[metadata_filt["instrument"] == "Sequel II"]
 # set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
 metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
 # set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
@@ -21,8 +21,12 @@ RUN_ACCESSIONS = metadata_all["run_accession"].unique().tolist()
 # extract library names, which we'll use to control the quality control portion of the workflow
 # some libraries are split between multiple SRA accessions
 ILLUMINA_LIB_NAMES = metadata_illumina["library_name"].unique().tolist()
-# extract assembly groups, which we'll use to control the asesmbly portion of the workflow
+# extract assembly groups, which we'll use to control the assembly portion of the workflow
 ASSEMBLY_GROUPS = metadata_illumina["assembly_group"].unique().tolist()
+
+# extract isoseq library names
+ISOSEQ_LIB_NAMES = metadata_isoseq['library_name'].unique().tolist()
+ISOSEQ_RUN_ACCESSIONS = metadata_isoseq['run_accession'].unique().tolist()
 
 rule all:
     input: 
@@ -212,4 +216,31 @@ rule split_paired_end_reads_fastp:
         cp {input} {output.r1}
         touch {output.r2}
     fi
+    '''
+
+######################################
+## Process & assemble isoseq files
+######################################
+
+# The A americanum isoseq data on the SRA has already been processed.
+# In this case, the sample was processed by UC Berkeley's computational core using the PacBio endorsed workflow.
+#
+# This probably looks something like this:
+# 1. Generate CCS consensuses from raw isoseq subreads (bam file) (PBCCS)
+# 2. Remove primer sequences from consensuses (LIMA)
+# 3. Detect and remove chimeric reads (ISOSEQ3 REFINE)
+# 4. Convert bam file into fasta file (BAMTOOLS CONVERT)
+# 5. Select reads with a polyA tail and trim it (GSTAMA_POLYACLEANUP)
+#
+# Since these steps have already been completed, the FASTQ file we're working with here already represents a non-redundant set of the longest transcripts that could be derived from the raw data.
+# We therefore only need to transform it into a FASTA file in order to include it in this analysis.
+#
+# In the future, if we need to do isoseq data processing, the first half of the nf-core/isoseq workflow has this above pipeline implemented.
+
+rule convert_isoseq_fastq_to_fasta:
+    input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSIONS)
+    output: "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk seq -a {input} > {output}
     '''
