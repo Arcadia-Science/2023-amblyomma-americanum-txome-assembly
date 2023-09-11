@@ -32,7 +32,7 @@ rule all:
     input: 
         expand("outputs/assembly/trinity/{assembly_group}_trinity.fa", assembly_group = ASSEMBLY_GROUPS),
         expand("outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa", assembly_group = ASSEMBLY_GROUPS),
-        expand("outputs/assembly/filtered/{isoseq_lib_name}_isoseq_filtered.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
+        expand("outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
 
 rule download_fastq_files:
     output: temp("inputs/raw/{run_accession}.fq.gz")
