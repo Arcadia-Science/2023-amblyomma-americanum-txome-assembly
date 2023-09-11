@@ -245,7 +245,7 @@ rule split_paired_end_reads_fastp:
 
 rule convert_isoseq_fastq_to_fasta:
     input: expand("inputs/raw/{isoseq_run_accession}.fq.gz", isoseq_run_accession = ISOSEQ_RUN_ACCESSIONS)
-    output: "outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa"
+    output: "outputs/assembly/isoseq/{isoseq_lib_name}.fa"
     conda: "envs/seqtk.yml"
     shell:'''
     seqtk seq -a {input} > {output}
