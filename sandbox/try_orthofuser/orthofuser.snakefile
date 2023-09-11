@@ -35,7 +35,7 @@ ASSEMBLERS = ["rnaspades", "trinity"]
 READS = ['R1', 'R2']
 
 rule all:
-    input: "outputs/orthofuser/orthofuser_final.fa"
+    input: expand("outputs/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS)
 
 rule rename_contigs:
     """
@@ -296,9 +296,34 @@ rule cdhitest:
     input: "outputs/orthofuser/newbies/orthomerged.fa"
     output: "outputs/orthofuser/orthofuser_final.fa"
     conda: "envs/cd-hit.yml"
-    threads: 4
+    threads: 30
     shell:'''
     cd-hit-est -M 5000 -T {threads} -c .98 -i {input} -o {output}
     '''
 
 # consider another round of transrate using the diginorm'd full read set on the first "orthofuser_final.fa" transcriptome
+
+rule salmon_index:
+    input: "outputs/orthofuser/orthofuser_final.fa"
+    output: "outputs/salmon/orthofuser_final_index/info.json"
+    threads: 8
+    params: indexdir = "outputs/salmon/orthofuser_final_index/"
+    conda: "envs/salmon.yml"
+    shell:'''
+    salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
+    '''
+
+rule salmon_quant:
+    input:
+        index = "outputs/salmon/orthofuser_final_index/info.json",
+        reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
+    output: "outputs/salmon/{assembly_group}_quant/quant.sf"
+    params: 
+        indexdir = "outputs/salmon/orthofuser_final_index/",
+        outdir = lambda wildcards: "outputs/salmon/" + wildcards.assembly_group + "_quant" 
+    conda: "envs/salmon.yml"
+    threads: 4
+    shell:'''
+    salmon quant -i {params.indexdir} -l A -1 {input.reads[0]} -2 {input.reads[1]} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads} 
+    '''
+
