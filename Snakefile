@@ -34,8 +34,8 @@ ASSEMBLERS = ["rnaspades", "trinity"]
 READS = ['R1', 'R2']
 
 # set contam screen params
-LINEAGES = ['contam', 'bacteria', 'archaea', 'protozoa']
-KSIZES = [21]
+LINEAGES = ['bacteria', 'archaea', 'protozoa', 'fungi', 'vertebrate_mammalian', 'vertebrate_other', 'plant']
+KSIZES = [51]
 
 rule all:
     input: 
@@ -563,12 +563,11 @@ rule salmon_quant:
 
 rule download_sourmash_databases_genbank:
     input: "inputs/sourmash_databases/sourmash-database-info.csv"
-    output: "inputs/sourmash_databases/genbank-2022.03-{lineage}-k{ksize}-scaled1k-cover.zip"
+    output: "inputs/sourmash_databases/genbank-{lineage}-k{ksize}-scaled10k-cover.zip"
     run:
         sourmash_database_info = pd.read_csv(input[0])
         ksize = int(wildcards.ksize)
         lineage_df = sourmash_database_info.loc[(sourmash_database_info['lineage'] == wildcards.lineage) & (sourmash_database_info['ksize'] == ksize)]
-        print(lineage_df)
         if lineage_df is None:
             raise TypeError("'None' value provided for lineage_df. Are you sure the sourmash database info csv was not empty?")
 
@@ -587,7 +586,7 @@ rule sourmash_sketch:
 rule sourmash_gather:
     input:
         sig="outputs/orthofuser/sourmash/orthofuser_final.sig",
-        db=expand("inputs/sourmash_databases/genbank-2022.03-{lineage}-k{{ksize}}-scaled1k-cover.zip", lineage = LINEAGES),
+        db=expand("inputs/sourmash_databases/genbank-{lineage}-k{{ksize}}-scaled10k-cover.zip", lineage = LINEAGES),
     output: "outputs/orthofuser/sourmash/orthofuser_final_k{ksize}_gather.csv"
     conda: "envs/sourmash.yml"
     shell:'''
