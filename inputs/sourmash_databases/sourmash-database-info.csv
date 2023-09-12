@@ -1,6 +1,8 @@
 ﻿lineage,ksize,osf_hash,description
-bacteria,21,bx6h8,"1k cover, 03-2022"
-fungi,21,mspv,"1k cover, 03-2022"
-archaea,21,fmx9a,"1k cover, 03-2022"
-protozoa,21,x4p7z,"1k cover, 03-2022"
-contam,21,ma8cf,
+archaea,51,kzas9,genbank-2022.03-archaea-k51-scaled10k-cover
+bacteria,51,s5mnw,genbank-2022.03-bacteria-k51-scaled10k-cover
+protozoa,51,g3xvp,genbank-2023.03-protozoa-k51-scaled10k-cover-masked
+fungi,51,n86f9,genbank-2023.03-fungi-k51-scaled10k-cover-masked
+vertebrate_mammalian,51,kmn8s,genbank-2023.03-vertebrate_mammalian-k51-scaled10k-cover-masked
+vertebrate_other,51,832sp,genbank-2023.03-vertebrate_other-k51-scaled10k-cover-masked
+plant,51,vdpm4,genbank-2023.03-plant-k51-scaled10k-cover-masked
