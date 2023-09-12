@@ -5,12 +5,9 @@ library(tidyverse)
 
 args <- commandArgs(trailingOnly = TRUE)
 
-# output
-in_blast       <- args[1]
-in_fai <- args[2]
-in_blast <- "~/Downloads/contaminant_genomes_blast.tsv"
-in_fai <- "~/Downloads/orthofuser_final.fa.fai"
-out_clean    <- args[3]
+in_blast          <- args[1]
+in_fai            <- args[2]
+out_clean         <- args[3]
 out_endosymbionts <- args[4]
 
 # parse blast results -----------------------------------------------------
