@@ -40,7 +40,8 @@ KSIZES = [51]
 rule all:
     input: 
         expand("outputs/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
-        expand("outputs/orthofuser/sourmash/orthofuser_final_k{ksize}_gather.csv", ksize = KSIZES)
+        "outputs/decontamination/orthofuser_final_clean.fa",
+        "outputs/decontamination/orthofuser_final_endosymbiont.fa"
 
 ######################################
 # Download short & long read data
@@ -577,7 +578,7 @@ rule download_sourmash_databases_genbank:
 
 rule sourmash_sketch:
     input: "outputs/orthofuser/orthofuser_final.fa"
-    output: "outputs/orthofuser/sourmash/orthofuser_final.sig"
+    output: "outputs/decontamination/sourmash/orthofuser_final.sig"
     conda: "envs/sourmash.yml"
     shell:'''
     sourmash sketch dna -p k=21,k=31,k=51,abund,scaled=1000 -o {output} --name orthofuser_final {input}
@@ -585,10 +586,88 @@ rule sourmash_sketch:
 
 rule sourmash_gather:
     input:
-        sig="outputs/orthofuser/sourmash/orthofuser_final.sig",
+        sig="outputs/decontamination/sourmash/orthofuser_final.sig",
         db=expand("inputs/sourmash_databases/genbank-{lineage}-k{{ksize}}-scaled10k-cover.zip", lineage = LINEAGES),
-    output: "outputs/orthofuser/sourmash/orthofuser_final_k{ksize}_gather.csv"
+    output: "outputs/decontamination/sourmash/orthofuser_final_k{ksize}_gather.csv"
     conda: "envs/sourmash.yml"
     shell:'''
     sourmash gather -k {wildcards.ksize} -o {output} {input.sig} {input.db}
+    '''
+
+rule parse_genome_accessions_from_sourmash_gather:
+    input: expand("outputs/decontamination/sourmash/orthofuser_final_k{ksize}_gather.csv", ksize = KSIZES)
+    output: "outputs/decontamination/orthofuser_final_contaminant_genome_accesions.tsv"
+    conda: "envs/tidyverse.yml"
+    shell:'''
+    scripts/parse_genome_accessions_from_sourmash_gather_results.R {input} {output}
+    '''
+
+rule download_genome_accessions:
+    input: "outputs/decontamination/orthofuser_final_contaminant_genome_accesions.tsv"
+    output: "outputs/decontamination/contaminant_genomes/contaminant_genomes.fna"
+    params: outdir = "outputs/decontamination/contaminant_genomes/"
+    conda: "envs/ncbi-genome-download.yml"
+    shell:'''
+    ncbi-genome-download -s genbank --flat-output --formats fasta --output-folder {params.outdir} --assembly-accessions {input} all && cat {params.outdir}/*fna.gz | gunzip > {output}
+    '''
+
+rule make_contam_genome_blast_db:
+    input: "outputs/decontamination/contaminant_genomes/contaminant_genomes.fna"
+    output: "outputs/decontamination/contaminant_genomes_blastdb/contaminant_genomes_blastdb.not"
+    params: dbprefix="outputs/decontamination/contaminant_genomes_blastdb/contaminant_genomes_blastdb"
+    conda: "envs/blast.yml"
+    shell:'''
+    makeblastdb -in {input} -dbtype nucl -out {params.dbprefix}
+    '''
+
+rule run_blast_for_contam_screen:
+    input: 
+        fa="outputs/orthofuser/orthofuser_final.fa",
+        db="outputs/decontamination/contaminant_genomes_blastdb/contaminant_genomes_blastdb.not"
+    output: "outputs/decontamination/contaminant_blast/contaminant_genomes_blast.tsv"
+    threads: 14
+    params: dbprefix="outputs/decontamination/contaminant_genomes_blastdb/contaminant_genomes_blastdb"
+    conda: "envs/blast.yml"
+    shell:'''
+    blastn -query {input.fa} -db {params.dbprefix} -outfmt 6 -out {output} -num_threads {threads} -max_target_seqs 5
+    '''
+
+rule samtools_faidx_transcriptome:
+    input: "outputs/orthofuser/orthofuser_final.fa"
+    output: "outputs/orthofuser/orthofuser_final.fa.fai"
+    conda: "envs/samtools.yml"
+    shell:'''
+    samtools faidx {input}
+    '''
+
+rule parse_blast_for_contaminant_contigs:
+    input:
+        blast="outputs/decontamination/contaminant_blast/contaminant_genomes_blast.tsv",
+        fai="outputs/orthofuser/orthofuser_final.fa.fai"
+    output: 
+        clean="outputs/decontamination/contaminant_blast/clean_contig_names.txt",
+        endosymbiont="outputs/decontamination/contaminant_blast/endosymbiont_contig_names.txt"
+    conda: "envs/tidyverse.yml"
+    shell:'''
+    scripts/parse_blast_for_contaminant_contigs.R {input.blast} {input.fai} {output.clean} {output.endosymbiont}
+    '''
+
+rule extract_clean_contigs:
+    input: 
+        fa="outputs/orthofuser/orthofuser_final.fa",
+        clean="outputs/decontamination/contaminant_blast/clean_contig_names.txt",
+    output: "outputs/decontamination/orthofuser_final_clean.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk subseq {input.fa} {input.clean} > {output}
+    '''
+
+rule extract_endosymbiont_contigs:
+    input: 
+        fa="outputs/orthofuser/orthofuser_final.fa",
+        endosymbiont="outputs/decontamination/contaminant_blast/endosymbiont_contig_names.txt",
+    output: "outputs/decontamination/orthofuser_final_endosymbiont.fa"
+    conda: "envs/seqtk.yml"
+    shell:'''
+    seqtk subseq {input.fa} {input.endosymbiont} > {output}
     '''
