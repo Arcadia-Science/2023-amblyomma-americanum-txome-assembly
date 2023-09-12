@@ -592,3 +592,17 @@ rule sourmash_gather:
     shell:'''
     sourmash gather -k {wildcards.ksize} -o {output} {input.sig} {input.db}
     '''
+
+################################################
+## ORF prediction
+################################################
+
+rule transdecoder_longorfs:
+   input:
+   output:
+   params: outdir=
+   conda: "envs/transdecoder.yml"
+   shell:'''
+   TransDecoder.LongOrfs -t {input} --output_dir outputs/transdecoder/
+   TransDecoder.Predict -t {wildcards.genussp} --output_dir outputs/transdecoder/
+   '''
