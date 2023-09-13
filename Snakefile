@@ -189,28 +189,6 @@ rule rnaspades_assemble:
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
     '''
 
-rule split_paired_end_reads_fastp:
-    """
-    the fastp trimmed reads are only quality trimmed, so the original abundances are preserved.
-    These are the correct reads to use for quantification (e.g. for mapping rates back to the transcriptome and differential expression).
-    """
-    input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
-    output:
-        r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
-        r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
-    conda: "envs/bbmap.yml"
-    shell:'''
-    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
-    '''
-
-rule combine_and_diginorm_all_reads:
-    input: expand("outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
-    output:
-    conda: "envs/khmer.yml"
-    shell:'''
-    cat {input} | trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 30e9 --diginorm --diginorm-coverage=20 --gzip -
-    '''
-
 #####################################
 ## Process & assemble isoseq files
 ######################################
@@ -359,7 +337,7 @@ rule merge_by_assembly_group_for_transrate:
     cat {input} > {output}
     '''
 
-rule transrate:
+rule transrate_orthofuser:
     """
     TransRate is a tool for reference-free quality assessment of de novo transcriptome assemblies.
     It uses evidence like read mapping rate and length to score each contig.
@@ -513,34 +491,9 @@ rule cdhitest:
     '''
 
 #######################################################################
-## Evaluate the quality of the merged transcriptome
+## Decontaminate transcriptome
 #######################################################################
 
-rule salmon_index:
-    input: "outputs/orthofuser/orthofuser_final.fa"
-    output: "outputs/evaluation/salmon/orthofuser_final_index/info.json"
-    threads: 8
-    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_index/"
-    conda: "envs/salmon.yml"
-    shell:'''
-    salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
-    '''
-
-rule salmon_quant:
-    input:
-        index = "outputs/evaluation/salmon/orthofuser_final_index/info.json",
-        reads=expand("outputs/read_qc/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
-    output: "outputs/evaluation/salmon/{assembly_group}_quant/quant.sf"
-    params:
-        indexdir = "outputs/evaluation/salmon/orthofuser_final_index/",
-        outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.assembly_group + "_quant"
-    conda: "envs/salmon.yml"
-    threads: 4
-    shell:'''
-    salmon quant -i {params.indexdir} -l A -1 {input.reads[0]} -2 {input.reads[1]} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads}
-    '''
-
-## Screen for contamination ------------------------------------------
 
 rule download_sourmash_databases_genbank:
     input: "inputs/sourmash_databases/sourmash-database-info.csv"
@@ -652,8 +605,90 @@ rule extract_endosymbiont_contigs:
     seqtk subseq {input.fa} {input.endosymbiont} > {output}
     '''
 
+#######################################################################
+## Evaluate the quality of the merged transcriptome
+#######################################################################
+
+# Prep reads sets for evaluation --------------------------------------
+
+rule split_paired_end_reads_fastp:
+    """
+    the fastp trimmed reads are only quality trimmed, so the original abundances are preserved.
+    These are the correct reads to use for quantification (e.g. for mapping rates back to the transcriptome and differential expression).
+    """
+    input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
+    output:
+        r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+    conda: "envs/bbmap.yml"
+    shell:'''
+    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
+    '''
+
+rule combine_and_diginorm_all_reads:
+    input: expand("outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
+    output: "outputs/read_qc/all_diginormed_reads.fq.gz"
+    conda: "envs/khmer.yml"
+    shell:'''
+    cat {input} | trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 30e9 --diginorm --diginorm-coverage=20 --gzip -
+    '''
+
+rule split_paired_diginorm_all_reads:
+    input: "outputs/read_qc/all_diginormed_reads.fq.gz"
+    output:
+        r1="outputs/read_qc/all_diginormed_reads_R1.fq.gz"
+        r2="outputs/read_qc/all_diginormed_reads_R2.fq.gz"
+    conda: "envs/bbmap.yml"
+    shell:'''
+    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
+    '''
+
+# Percent of reads that map back to the transcriptome -----------------
+
+rule combine_clean_and_endosymbiont_txome:
+    input:
+rule salmon_index:
+    input: "outputs/orthofuser/orthofuser_final.fa"
+    output: "outputs/evaluation/salmon/orthofuser_final_index/info.json"
+    threads: 8
+    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_index/"
+    conda: "envs/salmon.yml"
+    shell:'''
+    salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
+    '''
+
+rule salmon_quant:
+    input:
+        index = "outputs/evaluation/salmon/orthofuser_final_index/info.json",
+        reads=expand("outputs/read_qc/fastp_separated_reads/{{illumina_lib_name}}_{read}.fq.gz", read = READS)
+    output: "outputs/evaluation/salmon/{illumina_lib_name}_quant/quant.sf"
+    params:
+        indexdir = "outputs/evaluation/salmon/orthofuser_final_index/",
+        outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.illumina_lib_name + "_quant"
+    conda: "envs/salmon.yml"
+    threads: 4
+    shell:'''
+    salmon quant -i {params.indexdir} -l A -1 {input.reads[0]} -2 {input.reads[1]} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads}
+    '''
+
+# TransRate on final assembly -------------------------------------------
+
+rule transrate_final:
+    input:
+        assembly=XXXX
+        reads=expand("outputs/read_qc/all_diginormed_reads_{read}.fq.gz", read = READS)
+    output: "outputs/evaluation/transrate/XXXX/contigs.csv"
+    singularity: "docker://macmaneslab/orp:2.3.3"
+    params: outdir= "outputs/evaluation/transrate"
+    threads: 28
+    shell:'''
+    transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
+    # cleanup big output files
+    rm {params.outdir}/XXXX/*bam
+    '''
+
 ################################################
-## ORF prediction
+## Annotation
 ################################################
 
 rule transdecoder_longorfs:
@@ -674,4 +709,24 @@ rule transdecoder_predict:
     params: outdir="outputs/annotation/transdecoder/"
     shell:'''
     TransDecoder.Predict -t {input.fa} --output_dir {params.outdir}
+    '''
+
+rule dammit_install_databases:
+    output: "inputs/dammit_databases/databases.doit.db"
+    conda: "envs/dammit.yml"
+    threads: 8
+    shell:'''
+    dammit databases --install --busco-group arthropoda --database-dir inputs/dammit_databases --n_threads {threads}
+    '''
+
+rule dammit_annotation:
+    input:
+        fa="XXXX",
+        db="inputs/dammit_databases/databases.doit.db",
+    output: "outputs/annotation/dammit/XXXXX"
+    params: dbdir="inputs/dammit_databases/"
+    conda: "envs/dammit.yml"
+    threads: 30
+    shell:'''
+    dammit annotate {input.fa} --database-dir {params.dbdir} --no-rename --busco-group arthropoda -o . --n_threads {threads} 
     '''
