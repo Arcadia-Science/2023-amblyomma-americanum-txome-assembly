@@ -39,7 +39,7 @@ KSIZES = [51]
 
 rule all:
     input: 
-        expand("outputs/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
+        expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
         "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
 
@@ -67,10 +67,10 @@ rule combine_by_library_name:
     the output wildcard illumina_lib_name will only contain illumina library names.
     """
     input: expand("inputs/raw/{run_accession}.fq.gz", run_accession = RUN_ACCESSIONS)
-    output: temp(expand("outputs/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES))
+    output: temp(expand("outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES))
     params: 
         indir = "inputs/raw/",
-        outdir = "outputs/raw_combined/"
+        outdir = "outputs/read_qc/raw_combined/"
     run:
         # create a dictionary that has library names as keys and run accessions as values
         tmp_illumina = metadata_all[metadata_all["instrument"] != "Sequel II"].drop_duplicates()
@@ -95,11 +95,11 @@ rule fastp:
     - trim the polyA tails
     - adapter trim
     """
-    input: "outputs/raw_combined/{illumina_lib_name}.fq.gz"
+    input: "outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz"
     output:
-        json = "outputs/fastp/{illumina_lib_name}.json",
-        html = "outputs/fastp/{illumina_lib_name}.html",
-        fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
+        json = "outputs/read_qc/fastp/{illumina_lib_name}.json",
+        html = "outputs/read_qc/fastp/{illumina_lib_name}.html",
+        fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
     conda: "envs/fastp.yml"
     threads: 2
     params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
@@ -116,8 +116,8 @@ rule khmer_kmer_trim_and_normalization:
     K-mer trim and diginorm (digital normalization, or just normalization) according to the eelpond protocol/elvers.
     The oyster river protocol also supports removal of erroneous k-mers through similar methods.
     """
-    input: "outputs/fastp/{illumina_lib_name}.fq.gz"
-    output: "outputs/khmer/{illumina_lib_name}.fq.gz"
+    input: "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
+    output: "outputs/read_qc/khmer/{illumina_lib_name}.fq.gz"
     conda: "envs/khmer.yml"
     shell:'''
     trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 4e9 --diginorm --diginorm-coverage=20 --gzip {input}
@@ -130,11 +130,11 @@ rule combine_by_assembly_group:
     while isoform and SNP variation should be decreased as much as possible.
     This rule combines RNA-seq samples by pre-determined assembly groups (see metadata['assembly_group']) selected to balance the two above constraints.
     """
-    input: expand("outputs/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
-    output: expand("outputs/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
+    input: expand("outputs/read_qc/khmer/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    output: expand("outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
     params:
-        indir = "outputs/khmer/",
-        outdir = "outputs/assembly_group_interleaved_reads"
+        indir = "outputs/read_qc/khmer/",
+        outdir = "outputs/read_qc/assembly_group_interleaved_reads"
     run:
         # create a dictionary that has assembly groups as keys and library names as values
         tmp = metadata_illumina[["assembly_group", "library_name"]]
@@ -159,10 +159,10 @@ rule split_paired_end_reads:
     This rule separates reads into forward (R1) and reverse (R2) pairs.
     For single end reads, it touches the R2 file, as there is no information to separate.
     """
-    input: "outputs/assembly_group_interleaved_reads/{assembly_group}.fq.gz"
+    input: "outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz"
     output: 
-        r1="outputs/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
-        r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
+        r1="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
+        r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     conda: "envs/bbmap.yml"
     params: liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"]
     shell:'''
@@ -176,8 +176,8 @@ rule split_paired_end_reads:
 
 rule trinity_assemble:
     input:
-        r1="outputs/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
-        r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
+        r1="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
+        r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
     threads: 28
@@ -195,8 +195,8 @@ rule trinity_assemble:
 
 rule rnaspades_assemble:
     input:
-        r1="outputs/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
-        r2="outputs/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
+        r1="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
+        r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: 
         hard = "outputs/assembly/rnaspades/{assembly_group}_rnaspades_hard_filtered_transcripts.fa",
         soft = "outputs/assembly/rnaspades/{assembly_group}_rnaspades.fa"
@@ -216,10 +216,10 @@ rule rnaspades_assemble:
     '''
 
 rule split_paired_end_reads_fastp:
-    input: fq = "outputs/fastp/{illumina_lib_name}.fq.gz"
+    input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
     output:
-        r1="outputs/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
-        r2="outputs/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+        r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
     conda: "envs/bbmap.yml"
     params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
@@ -394,7 +394,7 @@ rule transrate:
     """
     input:
         assembly="outputs/assembly/merged/{assembly_group}_merged_filtered.fa",
-        reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
+        reads=expand("outputs/read_qc/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
     output: "outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv"
     singularity: "docker://macmaneslab/orp:2.3.3"
     params: outdir= "outputs/orthofuser/transrate_full"
@@ -538,9 +538,9 @@ rule cdhitest:
 
 rule salmon_index:
     input: "outputs/orthofuser/orthofuser_final.fa"
-    output: "outputs/salmon/orthofuser_final_index/info.json"
+    output: "outputs/evaluation/salmon/orthofuser_final_index/info.json"
     threads: 8
-    params: indexdir = "outputs/salmon/orthofuser_final_index/"
+    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_index/"
     conda: "envs/salmon.yml"
     shell:'''
     salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
@@ -548,12 +548,12 @@ rule salmon_index:
 
 rule salmon_quant:
     input:
-        index = "outputs/salmon/orthofuser_final_index/info.json",
-        reads=expand("outputs/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
-    output: "outputs/salmon/{assembly_group}_quant/quant.sf"
+        index = "outputs/evaluation/salmon/orthofuser_final_index/info.json",
+        reads=expand("outputs/read_qc/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
+    output: "outputs/evaluation/salmon/{assembly_group}_quant/quant.sf"
     params:
-        indexdir = "outputs/salmon/orthofuser_final_index/",
-        outdir = lambda wildcards: "outputs/salmon/" + wildcards.assembly_group + "_quant"
+        indexdir = "outputs/evaluation/salmon/orthofuser_final_index/",
+        outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.assembly_group + "_quant"
     conda: "envs/salmon.yml"
     threads: 4
     shell:'''
