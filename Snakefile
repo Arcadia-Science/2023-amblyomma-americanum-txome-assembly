@@ -216,6 +216,10 @@ rule rnaspades_assemble:
     '''
 
 rule split_paired_end_reads_fastp:
+    """
+    the fastp trimmed reads are only quality trimmed, so the original abundances are preserved.
+    These are the correct reads to use for quantification (e.g. for mapping rates back to the transcriptome and differential expression).
+    """
     input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
     output:
         r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
@@ -231,7 +235,15 @@ rule split_paired_end_reads_fastp:
     fi
     '''
 
-######################################
+rule combine_and_diginorm_all_reads:
+    input: expand("outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
+    output:
+    conda: "envs/khmer.yml"
+    shell:'''
+    cat {input} | trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 30e9 --diginorm --diginorm-coverage=20 --gzip -
+    '''
+
+#####################################
 ## Process & assemble isoseq files
 ######################################
 
