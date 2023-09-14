@@ -727,5 +727,5 @@ rule dammit_annotation:
     conda: "envs/dammit.yml"
     threads: 30
     shell:'''
-    dammit annotate {input.fa} --database-dir {params.dbdir} --no-rename --busco-group arthropoda -o . --n_threads {threads} 
+    dammit annotate {input.fa} --database-dir {params.dbdir} --busco-group arthropoda -o . --n_threads {threads} 
     '''
