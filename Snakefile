@@ -364,6 +364,21 @@ rule transrate_orthofuser:
     rm {params.outdir}/{wildcards.assembly_group}_merged_filtered/*bam
     '''
 
+rule transrate_isoseq:
+    input: 
+        assembly="outputs/assembly/isoseq/{isoseq_lib_name}_isoseq.fa",
+        reads=expand("outputs/read_qc/all_diginormed_reads_{read}.fq.gz", read = READS)
+    output: "outputs/orthofuser/transrate_full/{isoseq_lib_name}_isoseq/contigs.csv"
+    singularity: "docker://macmaneslab/orp:2.3.3"
+    params: outdir="outputs/orthofuser/transrate_full"
+    threads: 28
+    shell:'''
+    transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
+    mv {params.outdir}/assemblies.csv {params.outdir}/{wildcards.isoseq_lib_name}_isoseq_assemblies.csv
+    # cleanup big output files
+    rm {params.outdir}/{wildcards.isoseq_lib_name}_isoseq/*bam
+    '''
+
 rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     """
     This rule replaces a lot of the bash/awk/grep/thousands of file writing steps in orthofuser/ORP with a python script.
@@ -373,6 +388,7 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     input:
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
         transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS)
+        transrate_isoseq = expand("outputs/orthofuser/transrate_full/{isoseq_lib_name}_isoseq/contigs.fa", isoseq_lib_name = ISOSEQ_LIB_NAMES)
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
     python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {output} {input.orthogroups} {input.transrate}
