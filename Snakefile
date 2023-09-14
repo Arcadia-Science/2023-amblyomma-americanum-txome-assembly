@@ -37,8 +37,8 @@ KSIZES = [51]
 rule all:
     input: 
         expand("outputs/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
-        "outputs/decontamination/orthofuser_final_clean.fa",
-        "outputs/decontamination/orthofuser_final_endosymbiont.fa"
+        "outputs/decontamination/orthofuser_final_endosymbiont.fa",
+        "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
 
 ######################################
 # Download short & long read data
@@ -638,4 +638,28 @@ rule extract_endosymbiont_contigs:
     conda: "envs/seqtk.yml"
     shell:'''
     seqtk subseq {input.fa} {input.endosymbiont} > {output}
+    '''
+
+################################################
+## ORF prediction
+################################################
+
+rule transdecoder_longorfs:
+    input: "outputs/decontamination/orthofuser_final_clean.fa"
+    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds"
+    params: outdir="outputs/annotation/transdecoder/"
+    conda: "envs/transdecoder.yml"
+    shell:'''
+    TransDecoder.LongOrfs -t {input} --output_dir {params.outdir}
+    '''
+
+rule transdecoder_predict:
+    input: 
+        td="outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds",
+        fa="outputs/decontamination/orthofuser_final_clean.fa"
+    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
+    conda: "envs/transdecoder.yml"
+    params: outdir="outputs/annotation/transdecoder/"
+    shell:'''
+    TransDecoder.Predict -t {input.fa} --output_dir {params.outdir}
     '''
