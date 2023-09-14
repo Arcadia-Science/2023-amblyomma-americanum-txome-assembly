@@ -5,3 +5,6 @@ sandbox/
 .snakemake
 outputs/
 inputs/raw
+inputs/sourmash_databases/genbank*zip
+dag.*
+inputs/metadata_dag.tsv
