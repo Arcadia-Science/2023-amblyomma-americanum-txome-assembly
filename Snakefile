@@ -652,7 +652,7 @@ rule combine_and_diginorm_all_reads:
 rule split_paired_diginorm_all_reads:
     input: "outputs/read_qc/all_diginormed_reads.fq.gz"
     output:
-        r1="outputs/read_qc/all_diginormed_reads_R1.fq.gz"
+        r1="outputs/read_qc/all_diginormed_reads_R1.fq.gz",
         r2="outputs/read_qc/all_diginormed_reads_R2.fq.gz"
     conda: "envs/bbmap.yml"
     shell:'''
