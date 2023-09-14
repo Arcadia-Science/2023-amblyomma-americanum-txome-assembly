@@ -645,8 +645,6 @@ rule split_paired_diginorm_all_reads:
 
 # Percent of reads that map back to the transcriptome -----------------
 
-rule combine_clean_and_endosymbiont_txome:
-    input:
 rule salmon_index:
     input: "outputs/decontamination/orthofuser_final_clean.fa"
     output: "outputs/evaluation/salmon/orthofuser_final_clean_index/info.json"
@@ -675,7 +673,7 @@ rule salmon_quant:
 
 rule transrate_final:
     input:
-        assembly="outputs/decontamination/orthofuser_final_clean.fa"
+        assembly="outputs/decontamination/orthofuser_final_clean.fa",
         reads=expand("outputs/read_qc/all_diginormed_reads_{read}.fq.gz", read = READS)
     output: "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
     singularity: "docker://macmaneslab/orp:2.3.3"
@@ -714,15 +712,16 @@ rule transdecoder_predict:
 rule dammit_install_databases:
     output: "inputs/dammit_databases/databases.doit.db"
     conda: "envs/dammit.yml"
+    params: dbdir="inputs/dammit_databases/"
     threads: 8
     shell:'''
-    dammit databases --install --busco-group arthropoda --database-dir inputs/dammit_databases --n_threads {threads}
+    dammit databases --install --busco-group arthropoda --database-dir {params.dbdir} --n_threads {threads}
     '''
 
 rule dammit_annotation:
     input:
-        fa= "outputs/decontamination/orthofuser_final_clean.fa"
-        db="inputs/dammit_databases/databases.doit.db",
+        fa= "outputs/decontamination/orthofuser_final_clean.fa",
+        db="inputs/dammit_databases/databases.doit.db"
     output: "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta"
     params: dbdir="inputs/dammit_databases/"
     conda: "envs/dammit.yml"
