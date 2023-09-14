@@ -648,10 +648,10 @@ rule split_paired_diginorm_all_reads:
 rule combine_clean_and_endosymbiont_txome:
     input:
 rule salmon_index:
-    input: "outputs/orthofuser/orthofuser_final.fa"
-    output: "outputs/evaluation/salmon/orthofuser_final_index/info.json"
+    input: "outputs/decontamination/orthofuser_final_clean.fa"
+    output: "outputs/evaluation/salmon/orthofuser_final_clean_index/info.json"
     threads: 8
-    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_index/"
+    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_clean_index/"
     conda: "envs/salmon.yml"
     shell:'''
     salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
@@ -659,11 +659,11 @@ rule salmon_index:
 
 rule salmon_quant:
     input:
-        index = "outputs/evaluation/salmon/orthofuser_final_index/info.json",
+        index = "outputs/evaluation/salmon/orthofuser_final_clean_index/info.json",
         reads=expand("outputs/read_qc/fastp_separated_reads/{{illumina_lib_name}}_{read}.fq.gz", read = READS)
     output: "outputs/evaluation/salmon/{illumina_lib_name}_quant/quant.sf"
     params:
-        indexdir = "outputs/evaluation/salmon/orthofuser_final_index/",
+        indexdir = "outputs/evaluation/salmon/orthofuser_final_clean_index/",
         outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.illumina_lib_name + "_quant"
     conda: "envs/salmon.yml"
     threads: 4
@@ -675,16 +675,16 @@ rule salmon_quant:
 
 rule transrate_final:
     input:
-        assembly=XXXX
+        assembly="outputs/decontamination/orthofuser_final_clean.fa"
         reads=expand("outputs/read_qc/all_diginormed_reads_{read}.fq.gz", read = READS)
-    output: "outputs/evaluation/transrate/XXXX/contigs.csv"
+    output: "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
     singularity: "docker://macmaneslab/orp:2.3.3"
     params: outdir= "outputs/evaluation/transrate"
     threads: 28
     shell:'''
     transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
     # cleanup big output files
-    rm {params.outdir}/XXXX/*bam
+    rm {params.outdir}/orthofuser_final_clean/*bam
     '''
 
 ################################################
@@ -721,9 +721,9 @@ rule dammit_install_databases:
 
 rule dammit_annotation:
     input:
-        fa="XXXX",
+        fa= "outputs/decontamination/orthofuser_final_clean.fa"
         db="inputs/dammit_databases/databases.doit.db",
-    output: "outputs/annotation/dammit/XXXXX"
+    output: "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta"
     params: dbdir="inputs/dammit_databases/"
     conda: "envs/dammit.yml"
     threads: 30
