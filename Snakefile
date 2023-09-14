@@ -9,11 +9,8 @@ metadata_filt = metadata_all[["library_name", "assembly_group", "library_layout"
 # separate the isoseq data bc it will be treated separately
 metadata_illumina = metadata_filt[metadata_filt["instrument"] != "Sequel II"].drop_duplicates()
 metadata_isoseq = metadata_all[metadata_filt["instrument"] == "Sequel II"]
-# set the index to library name to allow dictionary-like lookups from the metadata tables with param lambda functions
+# set the index to library name to allow dictionary-like lookups from the metadata tables
 metadata_illumina = metadata_illumina.set_index("library_name", drop = False)
-# set the index to assembly group to allow dictionary-like lookups from the metadata tables with param lambda functions
-metadata_illumina2 = metadata_illumina[["assembly_group", "library_layout"]].drop_duplicates()
-metadata_illumina2 = metadata_illumina2.set_index("assembly_group", drop = False)
 
 # use metadata tables to create global variables
 # extract SRA accessions to a variable, which we'll use to download the raw data
@@ -102,13 +99,8 @@ rule fastp:
         fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
     conda: "envs/fastp.yml"
     threads: 2
-    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --stdout | gzip > {output.fq}
-    fi
+    fastp -i {input} --thread {threads} --trim_poly_x --qualified_quality_phred 2 --json {output.json} --html {output.html} --report_title {wildcards.illumina_lib_name} --interleaved_in --stdout | gzip > {output.fq}
     '''
 
 rule khmer_kmer_trim_and_normalization:
@@ -164,14 +156,8 @@ rule split_paired_end_reads:
         r1="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R1.fq.gz",
         r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     conda: "envs/bbmap.yml"
-    params: liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"]
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        cp {input} {output.r1}
-        touch {output.r2}
-    fi
+    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
     '''
 
 rule trinity_assemble:
@@ -181,15 +167,9 @@ rule trinity_assemble:
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
     threads: 28
-    params: 
-        liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
-        outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
+    params: outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        Trinity --single {input.r1} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup 
-    fi
+    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup
     mv {params.outdir}.Trinity.fasta {output}
     '''
 
@@ -202,15 +182,9 @@ rule rnaspades_assemble:
         soft = "outputs/assembly/rnaspades/{assembly_group}_rnaspades.fa"
     conda: "envs/spades.yml"
     threads: 4
-    params: 
-        liblayout = lambda wildcards: metadata_illumina2.loc[wildcards.assembly_group, "library_layout"],
-        outdir = lambda wildcards: "outputs/assembly/rnaspades_tmp/" + wildcards.assembly_group 
+    params: outdir = lambda wildcards: "outputs/assembly/rnaspades_tmp/" + wildcards.assembly_group 
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        rnaspades.py -1 {input.r1} -2 {input.r2} -o {params.outdir} -t {threads}
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        rnaspades.py -s {input.r1} -o {params.outdir} -t {threads}
-    fi
+    rnaspades.py -1 {input.r1} -2 {input.r2} -o {params.outdir} -t {threads}
     mv {params.outdir}/hard_filtered_transcripts.fasta {output.hard}
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
     '''
@@ -221,14 +195,8 @@ rule split_paired_end_reads_fastp:
         r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
         r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
     conda: "envs/bbmap.yml"
-    params: liblayout = lambda wildcards: metadata_illumina.loc[wildcards.illumina_lib_name, "library_layout"]
     shell:'''
-    if [ "{params.liblayout}" == "PAIRED" ]; then
-        repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
-    elif [ "{params.liblayout}" == "SINGLE" ]; then
-        cp {input} {output.r1}
-        touch {output.r2}
-    fi
+    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
     '''
 
 ######################################
