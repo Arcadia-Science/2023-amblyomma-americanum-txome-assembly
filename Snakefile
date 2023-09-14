@@ -262,7 +262,7 @@ rule deduplicate_merged_txomes_with_mmseqs:
 
 rule grab_deduplicated_contig_names:
     """
-    Grab fasta header names and remove the prefix ">" for deuplicated contigs
+    Grab fasta header names and remove the prefix ">" for deduplicated contigs
     """
     input: "outputs/assembly/merged/merged_rep_seq.fasta"
     output: "outputs/assembly/merged/merged_rep_seq_names.txt"
