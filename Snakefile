@@ -38,7 +38,9 @@ rule all:
     input: 
         expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
-        "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
+        "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds",
+        "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
+        "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
 
 ######################################
 # Download short & long read data
@@ -674,15 +676,12 @@ rule salmon_quant:
 rule transrate_final:
     input:
         assembly="outputs/decontamination/orthofuser_final_clean.fa",
-        reads=expand("outputs/read_qc/all_diginormed_reads_{read}.fq.gz", read = READS)
     output: "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
     singularity: "docker://macmaneslab/orp:2.3.3"
     params: outdir= "outputs/evaluation/transrate"
     threads: 28
     shell:'''
-    transrate -o {params.outdir} -t {threads} -a {input.assembly} --left {input.reads[0]} --right {input.reads[1]}
-    # cleanup big output files
-    rm {params.outdir}/orthofuser_final_clean/*bam
+    transrate -o {params.outdir} -t {threads} -a {input.assembly}
     '''
 
 ################################################
