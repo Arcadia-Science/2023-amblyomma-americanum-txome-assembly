@@ -38,7 +38,6 @@ rule all:
     input: 
         expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
-        "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds",
         "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
         "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
 
@@ -691,26 +690,6 @@ rule transrate_final:
 ################################################
 ## Annotation
 ################################################
-
-rule transdecoder_longorfs:
-    input: "outputs/decontamination/orthofuser_final_clean.fa"
-    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds"
-    params: outdir="outputs/annotation/transdecoder/"
-    conda: "envs/transdecoder.yml"
-    shell:'''
-    TransDecoder.LongOrfs -t {input} --output_dir {params.outdir}
-    '''
-
-rule transdecoder_predict:
-    input: 
-        td="outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds",
-        fa="outputs/decontamination/orthofuser_final_clean.fa"
-    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
-    conda: "envs/transdecoder.yml"
-    params: outdir="outputs/annotation/transdecoder/"
-    shell:'''
-    TransDecoder.Predict -t {input.fa} --output_dir {params.outdir}
-    '''
 
 rule dammit_install_databases:
     '''
