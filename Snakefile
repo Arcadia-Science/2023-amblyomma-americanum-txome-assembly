@@ -630,24 +630,6 @@ rule split_paired_end_reads_fastp:
     repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
     '''
 
-rule combine_and_diginorm_all_reads:
-    input: expand("outputs/read_qc/assembly_group_interleaved_reads/{assembly_group}.fq.gz", assembly_group = ASSEMBLY_GROUPS)
-    output: "outputs/read_qc/all_diginormed_reads.fq.gz"
-    conda: "envs/khmer.yml"
-    shell:'''
-    cat {input} | trim-low-abund.py -V -k 20 -Z 18 -C 2 -o {output} -M 30e9 --diginorm --diginorm-coverage=20 --gzip -
-    '''
-
-rule split_paired_diginorm_all_reads:
-    input: "outputs/read_qc/all_diginormed_reads.fq.gz"
-    output:
-        r1="outputs/read_qc/all_diginormed_reads_R1.fq.gz",
-        r2="outputs/read_qc/all_diginormed_reads_R2.fq.gz"
-    conda: "envs/bbmap.yml"
-    shell:'''
-    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
-    '''
-
 # Percent of reads that map back to the transcriptome -----------------
 
 rule salmon_index:
