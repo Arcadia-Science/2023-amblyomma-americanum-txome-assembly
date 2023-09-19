@@ -709,22 +709,32 @@ rule transdecoder_predict:
     '''
 
 rule dammit_install_databases:
-    output: "inputs/dammit_databases/databases.doit.db"
+    '''
+    Note as written, this will install databases in the default location, which is a hidden dir in the users home database.
+    See https://github.com/dib-lab/dammit/issues/183
+    Trying to install dbs in a specific directory creates an error message.
+    '''
+    output: "outputs/annotation/dammit/databases_installed.txt"
     conda: "envs/dammit.yml"
-    params: dbdir="inputs/dammit_databases/"
+    #params: dbdir="inputs/dammit_databases/"
     threads: 8
     shell:'''
-    dammit databases --install --busco-group arthropoda --database-dir {params.dbdir} --n_threads {threads}
+    dammit databases --install --busco-group arthropoda --n_threads {threads} --quick && touch {output}
     '''
 
 rule dammit_annotation:
+    '''
+    Trying to write outputs to specific directory creates an error message, so until it's fixed, we write to default outdir (basename of input file, with .dammit appended) and then move results to desired output folder.
+    See https://github.com/dib-lab/dammit/issues/183
+    '''
     input:
         fa= "outputs/decontamination/orthofuser_final_clean.fa",
-        db="inputs/dammit_databases/databases.doit.db"
+        db="outputs/annotation/dammit/databases_installed.txt"
     output: "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta"
-    params: dbdir="inputs/dammit_databases/"
     conda: "envs/dammit.yml"
     threads: 30
     shell:'''
-    dammit annotate {input.fa} --database-dir {params.dbdir} --busco-group arthropoda -o . --n_threads {threads} 
+    dammit annotate {input.fa} --busco-group arthropoda --quick --n_threads {threads}
+    mv orthofuser_final_clean.fa.dammit/* outputs/annotation/dammit/
+    rmdir orthofuser_final_clean.fa.dammit/
     '''
