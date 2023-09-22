@@ -370,10 +370,14 @@ rule get_contig_name_w_highest_transrate_score_for_each_orthogroup:
     This rule replaces a lot of the bash/awk/grep/thousands of file writing steps in orthofuser/ORP with a python script.
     It writes the name of the highest scoring transcript (contig name) from transrate for each orthogroup.
     It takes the highest scoring contig for each orthogroup from the multiple transrate runs.
+
+    We adapted this approach so that all isoseq contigs are included in the final transcriptome.
+    Only orthogroups without an isoseq contig return a transrate-scored short read contig.
+    If there are multiple isoseq contigs in an orthogroup, all are returned.
     """
     input:
         orthogroups = "outputs/orthofuser/orthofinder/Orthogroups/Orthogroups.txt",
-        transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS)
+        transrate = expand("outputs/orthofuser/transrate_full/{assembly_group}_merged_filtered/contigs.csv", assembly_group = ASSEMBLY_GROUPS),
     output: "outputs/orthofuser/orthomerged/good.list"
     shell:'''
     python scripts/get_contig_name_w_highest_transrate_score_for_each_orthogroup.py {output} {input.orthogroups} {input.transrate}
