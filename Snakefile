@@ -38,7 +38,8 @@ rule all:
     input: 
         expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
-        "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
+        "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
+        "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
 
 ######################################
 # Download short & long read data
@@ -189,17 +190,7 @@ rule rnaspades_assemble:
     mv {params.outdir}/soft_filtered_transcripts.fasta {output.soft}
     '''
 
-rule split_paired_end_reads_fastp:
-    input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
-    output:
-        r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
-        r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
-    conda: "envs/bbmap.yml"
-    shell:'''
-    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
-    '''
-
-######################################
+#####################################
 ## Process & assemble isoseq files
 ######################################
 
@@ -347,7 +338,7 @@ rule merge_by_assembly_group_for_transrate:
     cat {input} > {output}
     '''
 
-rule transrate:
+rule transrate_orthofuser:
     """
     TransRate is a tool for reference-free quality assessment of de novo transcriptome assemblies.
     It uses evidence like read mapping rate and length to score each contig.
@@ -501,34 +492,9 @@ rule cdhitest:
     '''
 
 #######################################################################
-## Evaluate the quality of the merged transcriptome
+## Decontaminate transcriptome
 #######################################################################
 
-rule salmon_index:
-    input: "outputs/orthofuser/orthofuser_final.fa"
-    output: "outputs/evaluation/salmon/orthofuser_final_index/info.json"
-    threads: 8
-    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_index/"
-    conda: "envs/salmon.yml"
-    shell:'''
-    salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
-    '''
-
-rule salmon_quant:
-    input:
-        index = "outputs/evaluation/salmon/orthofuser_final_index/info.json",
-        reads=expand("outputs/read_qc/assembly_group_separated_reads/{{assembly_group}}_{read}.fq.gz", read = READS)
-    output: "outputs/evaluation/salmon/{assembly_group}_quant/quant.sf"
-    params:
-        indexdir = "outputs/evaluation/salmon/orthofuser_final_index/",
-        outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.assembly_group + "_quant"
-    conda: "envs/salmon.yml"
-    threads: 4
-    shell:'''
-    salmon quant -i {params.indexdir} -l A -1 {input.reads[0]} -2 {input.reads[1]} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads}
-    '''
-
-## Screen for contamination ------------------------------------------
 
 rule download_sourmash_databases_genbank:
     input: "inputs/sourmash_databases/sourmash-database-info.csv"
@@ -640,26 +606,96 @@ rule extract_endosymbiont_contigs:
     seqtk subseq {input.fa} {input.endosymbiont} > {output}
     '''
 
-################################################
-## ORF prediction
-################################################
+#######################################################################
+## Evaluate the quality of the merged transcriptome
+#######################################################################
 
-rule transdecoder_longorfs:
-    input: "outputs/decontamination/orthofuser_final_clean.fa"
-    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds"
-    params: outdir="outputs/annotation/transdecoder/"
-    conda: "envs/transdecoder.yml"
+# Prep reads sets for evaluation --------------------------------------
+
+rule split_paired_end_reads_fastp:
+    """
+    the fastp trimmed reads are only quality trimmed, so the original abundances are preserved.
+    These are the correct reads to use for quantification (e.g. for mapping rates back to the transcriptome and differential expression).
+    """
+    input: fq = "outputs/read_qc/fastp/{illumina_lib_name}.fq.gz"
+    output:
+        r1="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R1.fq.gz",
+        r2="outputs/read_qc/fastp_separated_reads/{illumina_lib_name}_R2.fq.gz"
+    conda: "envs/bbmap.yml"
     shell:'''
-    TransDecoder.LongOrfs -t {input} --output_dir {params.outdir}
+    repair.sh in={input} out={output.r1} out2={output.r2} repair=t overwrite=true
     '''
 
-rule transdecoder_predict:
-    input: 
-        td="outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder_dir/longest_orfs.cds",
-        fa="outputs/decontamination/orthofuser_final_clean.fa"
-    output: "outputs/annotation/transdecoder/orthofuser_final_clean.fa.transdecoder.cds"
-    conda: "envs/transdecoder.yml"
-    params: outdir="outputs/annotation/transdecoder/"
+# Percent of reads that map back to the transcriptome -----------------
+
+rule salmon_index:
+    input: "outputs/decontamination/orthofuser_final_clean.fa"
+    output: "outputs/evaluation/salmon/orthofuser_final_clean_index/info.json"
+    threads: 8
+    params: indexdir = "outputs/evaluation/salmon/orthofuser_final_clean_index/"
+    conda: "envs/salmon.yml"
     shell:'''
-    TransDecoder.Predict -t {input.fa} --output_dir {params.outdir}
+    salmon index -p {threads} -t {input} -i {params.indexdir} -k 31
+    '''
+
+rule salmon_quant:
+    input:
+        index = "outputs/evaluation/salmon/orthofuser_final_clean_index/info.json",
+        reads=expand("outputs/read_qc/fastp_separated_reads/{{illumina_lib_name}}_{read}.fq.gz", read = READS)
+    output: "outputs/evaluation/salmon/{illumina_lib_name}_quant/quant.sf"
+    params:
+        indexdir = "outputs/evaluation/salmon/orthofuser_final_clean_index/",
+        outdir = lambda wildcards: "outputs/evaluation/salmon/" + wildcards.illumina_lib_name + "_quant"
+    conda: "envs/salmon.yml"
+    threads: 4
+    shell:'''
+    salmon quant -i {params.indexdir} -l A -1 {input.reads[0]} -2 {input.reads[1]} -o {params.outdir} --dumpEq --writeOrphanLinks -p {threads}
+    '''
+
+# TransRate on final assembly -------------------------------------------
+
+rule transrate_final:
+    input:
+        assembly="outputs/decontamination/orthofuser_final_clean.fa",
+    output: "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
+    singularity: "docker://macmaneslab/orp:2.3.3"
+    params: outdir= "outputs/evaluation/transrate"
+    threads: 28
+    shell:'''
+    transrate -o {params.outdir} -t {threads} -a {input.assembly}
+    '''
+
+################################################
+## Annotation
+################################################
+
+rule dammit_install_databases:
+    '''
+    Note as written, this will install databases in the default location, which is a hidden dir in the users home database.
+    See https://github.com/dib-lab/dammit/issues/183
+    Trying to install dbs in a specific directory creates an error message.
+    '''
+    output: "outputs/annotation/dammit/databases_installed.txt"
+    conda: "envs/dammit.yml"
+    #params: dbdir="inputs/dammit_databases/"
+    threads: 8
+    shell:'''
+    dammit databases --install --busco-group arthropoda --n_threads {threads} --quick && touch {output}
+    '''
+
+rule dammit_annotation:
+    '''
+    Trying to write outputs to specific directory creates an error message, so until it's fixed, we write to default outdir (basename of input file, with .dammit appended) and then move results to desired output folder.
+    See https://github.com/dib-lab/dammit/issues/183
+    '''
+    input:
+        fa= "outputs/decontamination/orthofuser_final_clean.fa",
+        db="outputs/annotation/dammit/databases_installed.txt"
+    output: "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta"
+    conda: "envs/dammit.yml"
+    threads: 30
+    shell:'''
+    dammit annotate {input.fa} --busco-group arthropoda --quick --n_threads {threads}
+    mv orthofuser_final_clean.fa.dammit/* outputs/annotation/dammit/
+    rmdir orthofuser_final_clean.fa.dammit/
     '''
