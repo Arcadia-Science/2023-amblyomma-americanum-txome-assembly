@@ -39,7 +39,8 @@ rule all:
         expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
         "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
-        "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv"
+        "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv",
+        "outputs/evaluation/busco/orthofuser_final_clean/short_summary.specific.arachnida_odb10.orthofuser_final_clean.txt"
 
 ######################################
 # Download short & long read data
@@ -702,4 +703,13 @@ rule dammit_annotation:
     dammit annotate {input.fa} --busco-group arthropoda --quick --n_threads {threads}
     mv orthofuser_final_clean.fa.dammit/* outputs/annotation/dammit/
     rmdir orthofuser_final_clean.fa.dammit/
+    '''
+
+rule busco:
+    input: "outputs/decontamination/orthofuser_final_clean.fa",
+    output: "outputs/evaluation/busco/orthofuser_final_clean/short_summary.specific.arachnida_odb10.orthofuser_final_clean.txt"
+    conda: "envs/busco.yml"
+    threads: 14
+    shell:'''
+    busco --cpu {threads} -i {input} -o {output} -l arachnida_odb10 -m tran
     '''
