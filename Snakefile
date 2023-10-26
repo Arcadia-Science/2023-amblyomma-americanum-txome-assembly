@@ -1,8 +1,6 @@
 import pandas as pd
 
 metadata_file = config.get("metadata_file", "inputs/metadata.tsv")
-trinity_max_mem = config.get("trinity_max_mem", "100G")
-trinity_threads = config.get("trinity_threads", "28")
 
 # read in metadata file
 metadata_all = pd.read_csv(metadata_file, sep = "\t").set_index("run_accession", drop = False)
@@ -173,8 +171,10 @@ rule trinity_assemble:
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
     params: outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
+    resources:
+        mem_gb = 100
     shell:'''
-    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {trinity_threads} --max_memory {trinity_max_mem} --output {params.outdir} --full_cleanup
+    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory {resources.mem_gb}G --output {params.outdir} --full_cleanup
     mv {params.outdir}.Trinity.fasta {output}
     '''
 
