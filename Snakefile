@@ -38,7 +38,7 @@ KSIZES = [51]
 
 rule all:
     input: 
-        expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
+        expand("outputs/evaluation/salmon/{illumina_lib_name}_quant/quant.sf", illumina_lib_name = ILLUMINA_LIB_NAMES),
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
         "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
         "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv",
@@ -96,7 +96,7 @@ rule fastp:
     - trim the polyA tails
     - adapter trim
     """
-    input: expand("outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
+    input: "outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz"
     output:
         json = "outputs/read_qc/fastp/{illumina_lib_name}.json",
         html = "outputs/read_qc/fastp/{illumina_lib_name}.html",
@@ -170,6 +170,7 @@ rule trinity_assemble:
         r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
+    threads: 28
     params: outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     resources:
         mem_gb = 100
