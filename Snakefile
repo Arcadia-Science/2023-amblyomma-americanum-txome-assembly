@@ -1,7 +1,11 @@
 import pandas as pd
 
+metadata_file = config.get("metadata_file", "inputs/metadata.tsv")
+trinity_max_mem = config.get("trinity_max_mem", "100G")
+trinity_threads = config.get("trinity_threads", "28")
+
 # read in metadata file
-metadata_all = pd.read_csv("inputs/metadata.tsv", sep = "\t").set_index("run_accession", drop = False)
+metadata_all = pd.read_csv(metadata_file, sep = "\t").set_index("run_accession", drop = False)
 # filter out samples that should be excluded (library prep was weird)
 metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 # select columns that we need metadata from for wildcards and other places in the workflow
@@ -94,7 +98,7 @@ rule fastp:
     - trim the polyA tails
     - adapter trim
     """
-    input: "outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz"
+    input: expand("outputs/read_qc/raw_combined/{illumina_lib_name}.fq.gz", illumina_lib_name = ILLUMINA_LIB_NAMES)
     output:
         json = "outputs/read_qc/fastp/{illumina_lib_name}.json",
         html = "outputs/read_qc/fastp/{illumina_lib_name}.html",
@@ -168,10 +172,9 @@ rule trinity_assemble:
         r2="outputs/read_qc/assembly_group_separated_reads/{assembly_group}_R2.fq.gz"
     output: "outputs/assembly/trinity/{assembly_group}_trinity.fa"
     conda: "envs/trinity.yml"
-    threads: 28
     params: outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
     shell:'''
-    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup
+    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {trinity_threads} --max_memory {trinity_max_mem} --output {params.outdir} --full_cleanup
     mv {params.outdir}.Trinity.fasta {output}
     '''
 

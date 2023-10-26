@@ -38,3 +38,10 @@ To start the pipeline, run:
 ```
 snakemake --use-conda -j 2
 ```
+
+The pipeline processes accessions listed in a TSV file, which defaults to `inputs/metadata.tsv`.
+To use a different set of accessions, override Snakemake's `metadata_file` configuration parameter; for example, to run on a smaller set of accessions listed in `inputs/metadata_sample.tsv`, use:
+
+```
+snakemake --use-conda -j 2 --config metadata_file=inputs/metadata_sample.tsv
+```
