@@ -1,7 +1,9 @@
 import pandas as pd
 
+metadata_file = config.get("metadata_file", "inputs/metadata.tsv")
+
 # read in metadata file
-metadata_all = pd.read_csv("inputs/metadata.tsv", sep = "\t").set_index("run_accession", drop = False)
+metadata_all = pd.read_csv(metadata_file, sep = "\t").set_index("run_accession", drop = False)
 # filter out samples that should be excluded (library prep was weird)
 metadata_all = metadata_all[metadata_all['excluded'] == "keep"]
 # select columns that we need metadata from for wildcards and other places in the workflow
@@ -36,7 +38,7 @@ KSIZES = [51]
 
 rule all:
     input: 
-        expand("outputs/evaluation/salmon/{assembly_group}_quant/quant.sf", assembly_group = ASSEMBLY_GROUPS), 
+        expand("outputs/evaluation/salmon/{illumina_lib_name}_quant/quant.sf", illumina_lib_name = ILLUMINA_LIB_NAMES),
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
         "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
         "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv",
@@ -170,8 +172,10 @@ rule trinity_assemble:
     conda: "envs/trinity.yml"
     threads: 28
     params: outdir = lambda wildcards: "outputs/assembly/trinity_tmp/" + wildcards.assembly_group + "_Trinity" 
+    resources:
+        mem_gb = 100
     shell:'''
-    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory 100G --output {params.outdir} --full_cleanup
+    Trinity --left {input.r1} --right {input.r2} --seqType fq --CPU {threads} --max_memory {resources.mem_gb}G --output {params.outdir} --full_cleanup
     mv {params.outdir}.Trinity.fasta {output}
     '''
 
