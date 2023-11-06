@@ -42,7 +42,8 @@ rule all:
         "outputs/decontamination/orthofuser_final_endosymbiont.fa",
         "outputs/annotation/dammit/orthofuser_final_clean.fa.dammit.fasta",
         "outputs/evaluation/transrate/orthofuser_final_clean/contigs.csv",
-        "outputs/evaluation/busco/orthofuser_final_clean/short_summary.specific.arachnida_odb10.orthofuser_final_clean.txt"
+        "outputs/evaluation/busco/orthofuser_final_clean/short_summary.specific.arachnida_odb10.orthofuser_final_clean.txt",
+        "outputs/assembly/small_contigs.fa"
 
 ######################################
 # Download short & long read data
@@ -303,7 +304,25 @@ rule filter_by_length:
     seqkit seq -m 75 -o {output} {input}
     '''
 
-# TODO: add a rule to keep anything smaller than 75 and then come up with a strategy to work with this set (search for peptides, etc).
+rule filter_by_length_keep_small:
+    """
+    some small contigs may encode short peptides or other legitmate short contigs instead of being fragments.
+    this rule outputs those contigs so they can be further scrutinized by short contig-specific methods in other analyses.
+    the length, 74, is one minus the length in rule filter_by_length, so it will capture all contigs that are filtered at this step.
+    """
+    input: "outputs/assembly/filtered_duplicates/{assembly_group}_{assembler}_filtered.fa"
+    output: "outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered_small.fa"
+    conda: "envs/seqkit.yml"
+    shell:'''
+    seqkit seq --max-len 74 -o {output} {input}
+    '''
+
+rule combine_small_contigs:
+    input: expand("outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered_small.fa", assembly_group = ASSEMBLY_GROUPS, assembler = ASSEMBLERS)
+    output: "outputs/assembly/small_contigs.fa"
+    shell:'''
+    cat {input} > {output}
+    '''
 
 rule orthofinder:
     """
