@@ -45,3 +45,7 @@ To use a different set of accessions, override Snakemake's `metadata_file` confi
 ```
 snakemake --use-conda -j 2 --config metadata_file=inputs/metadata_sample.tsv
 ```
+
+## Contributing
+
+See [this guide](https://github.com/Arcadia-Science/arcadia-software-handbook/blob/main/guides-and-standards/guide-credit-for-contributions.md) to see how we recognize feedback and contributions on our code.
