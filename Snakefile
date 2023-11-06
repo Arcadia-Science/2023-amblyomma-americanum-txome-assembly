@@ -308,6 +308,7 @@ rule filter_by_length_keep_small:
     """
     some small contigs may encode short peptides or other legitmate short contigs instead of being fragments.
     this rule outputs those contigs so they can be further scrutinized by short contig-specific methods in other analyses.
+    the length, 74, is one minus the length in rule filter_by_length, so it will capture all contigs that are filtered at this step.
     """
     input: "outputs/assembly/filtered_duplicates/{assembly_group}_{assembler}_filtered.fa"
     output: "outputs/assembly/filtered_size/{assembly_group}_{assembler}_filtered_small.fa"
