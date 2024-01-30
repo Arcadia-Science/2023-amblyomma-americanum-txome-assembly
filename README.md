@@ -1,5 +1,8 @@
 # 2023-amblyomma-americanum-txome-assembly
 
+This repository contains the code we used in the pub, "[Predicted genes from the Amblyomma americanum draft genome assembly](﻿https://doi.org/10.57844/arcadia-9602-3351﻿)".
+The main outputs of this workflow are available on [zenodo](https://zenodo.org/records/10574110).
+
 ## Getting started with this repository
 
 ### Running the pipeline on an AWS EC2 instance
